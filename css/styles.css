@@ -9,8 +9,55 @@
   --verdigris-dim: #3C6E5E;
   --line: rgba(237,230,220,0.14);
   --shadow: rgba(0,0,0,0.35);
+  --header-bg: rgba(10,10,10,0.88);
+  --well-a: #1c1c1c;
+  --well-b: #0d0d0d;
+  --scrim: rgba(15,10,14,0.7);
+  --scrim-soft: rgba(15,10,14,0.5);
+  --ghost-bg: rgba(0,0,0,0.3);
+  --tint: rgba(176,141,87,0.10);
   --display: 'Fraunces', serif;
   --body: 'Public Sans', sans-serif;
+}
+
+/* LIGHT THEME
+   Same brand, inverted ground. The token names stay as they are
+   (--ink is the background, --paper is the foreground) so nothing
+   else in this stylesheet — and none of the generated SVGs in
+   data.js — needs to know a second palette exists.
+
+   Brass and verdigris are darkened rather than reused: the dark
+   values are tuned for contrast against near-black and drop below
+   readable contrast on a light ground. --brass-bright stays the
+   emphasis colour, which on light means darker, not lighter. */
+:root[data-theme="light"]{
+  --ink: #F6F1E8;
+  --ink-2: #EDE4D5;
+  --paper: #171310;
+  --paper-dim: #574E43;
+  --brass: #8A6636;
+  --brass-bright: #6E4F28;
+  --verdigris: #2F6153;
+  --verdigris-dim: #24493E;
+  --line: rgba(23,19,16,0.16);
+  --shadow: rgba(60,45,25,0.14);
+  --header-bg: rgba(246,241,232,0.88);
+  --well-a: #E7DDCC;
+  --well-b: #DCD0BA;
+  --scrim: rgba(35,27,18,0.42);
+  --scrim-soft: rgba(35,27,18,0.30);
+  --ghost-bg: rgba(255,255,255,0.55);
+  --tint: rgba(138,102,54,0.12);
+}
+
+/* Repainting every surface at once reads as a jolt; easing the
+   ground and the rules makes the switch feel deliberate. Anything
+   that animates position stays untouched. */
+body, header, .card, .modal, .drawer, .card-media, .modal-media{
+  transition: background-color .25s ease, border-color .25s ease, color .25s ease;
+}
+@media (prefers-reduced-motion: reduce){
+  body, header, .card, .modal, .drawer, .card-media, .modal-media{transition:none;}
 }
 *{box-sizing:border-box;}
 html{scroll-behavior:smooth;}
@@ -32,12 +79,26 @@ button{font-family:inherit;cursor:pointer;}
   font-weight:600;
 }
 
+/* Shared chrome — used by the storefront and the admin screens. */
+.theme-toggle{
+  background:transparent;border:1px solid var(--line);color:var(--paper);
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  display:inline-flex;align-items:center;justify-content:center;
+  transition:border-color .2s, background .2s, color .2s;
+}
+.theme-toggle:hover{border-color:var(--brass);background:var(--tint);color:var(--brass-bright);}
+.linkish{
+  font-size:12px;letter-spacing:0.06em;text-transform:uppercase;
+  font-weight:600;color:var(--paper-dim);transition:color .2s;white-space:nowrap;
+}
+.linkish:hover{color:var(--brass-bright);}
+
 /* HEADER */
 header{
   position:sticky;top:0;z-index:50;
   display:flex;align-items:center;justify-content:space-between;
   padding:22px 40px;
-  background:rgba(10,10,10,0.88);
+  background:var(--header-bg);
   backdrop-filter:blur(10px);
   border-bottom:1px solid var(--line);
 }
@@ -72,7 +133,7 @@ nav.mainnav button:hover, nav.mainnav button.active{
   font-size:12px;letter-spacing:0.06em;text-transform:uppercase;font-weight:600;
   transition:all .2s;
 }
-.cart-btn:hover{border-color:var(--brass);background:rgba(176,141,87,0.1);}
+.cart-btn:hover{border-color:var(--brass);background:var(--tint);}
 .cart-count{
   background:var(--verdigris);color:var(--ink);
   border-radius:999px;min-width:18px;height:18px;
@@ -143,7 +204,7 @@ nav.mainnav button:hover, nav.mainnav button.active{
 .card-media{
   aspect-ratio:1/1.1;position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(150deg, #1c1c1c, #0d0d0d);cursor:pointer;
+  background:linear-gradient(150deg, var(--well-a), var(--well-b));cursor:pointer;
 }
 .card-media svg{width:52%;height:52%;opacity:0.9;transition:transform .4s;}
 .card:hover .card-media svg{transform:scale(1.08) rotate(3deg);}
@@ -186,7 +247,7 @@ footer ul a:hover{color:var(--brass-bright);}
 
 /* MODAL */
 .overlay{
-  position:fixed;inset:0;background:rgba(15,10,14,0.7);
+  position:fixed;inset:0;background:var(--scrim);
   backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;
   z-index:100;padding:24px;
 }
@@ -198,12 +259,12 @@ footer ul a:hover{color:var(--brass-bright);}
 }
 .modal-close{
   position:absolute;top:18px;right:18px;
-  background:rgba(0,0,0,0.3);border:1px solid var(--line);color:var(--paper);
+  background:var(--ghost-bg);border:1px solid var(--line);color:var(--paper);
   width:34px;height:34px;border-radius:50%;font-size:16px;
   display:flex;align-items:center;justify-content:center;z-index:2;
 }
 .modal-media{
-  background:linear-gradient(150deg,#1c1c1c,#0d0d0d);
+  background:linear-gradient(150deg,var(--well-a),var(--well-b));
   display:flex;align-items:center;justify-content:center;padding:40px;
 }
 .modal-media svg{width:70%;height:70%;}
@@ -220,7 +281,7 @@ footer ul a:hover{color:var(--brass-bright);}
 .modal-add{width:100%;justify-content:center;}
 
 /* CART DRAWER */
-.cart-overlay{position:fixed;inset:0;background:rgba(15,10,14,0.5);display:none;z-index:100;}
+.cart-overlay{position:fixed;inset:0;background:var(--scrim-soft);display:none;z-index:100;}
 .cart-overlay.open{display:block;}
 .drawer{
   position:fixed;top:0;right:0;bottom:0;width:420px;max-width:92vw;
@@ -238,7 +299,7 @@ footer ul a:hover{color:var(--brass-bright);}
 .drawer-item{display:flex;gap:14px;padding:18px 0;border-bottom:1px solid var(--line);}
 .drawer-item .thumb{
   width:64px;height:64px;border-radius:10px;flex-shrink:0;
-  background:linear-gradient(150deg,#1c1c1c,#0d0d0d);
+  background:linear-gradient(150deg,var(--well-a),var(--well-b));
   display:flex;align-items:center;justify-content:center;
 }
 .drawer-item .thumb svg{width:60%;height:60%;}
