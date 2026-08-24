@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loop Theory — Jewelry, considered.</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="loopmark">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+        <circle cx="12" cy="15" r="8" stroke="var(--brass-bright)" stroke-width="2.4"/>
+        <circle cx="19" cy="15" r="8" stroke="var(--verdigris)" stroke-width="2.4"/>
+      </svg>
+    </span>
+    Loop Theory
+  </div>
+  <nav class="mainnav" id="mainnav">
+    <button onclick="setFilter('All')" class="active">Shop All</button>
+    <button onclick="setFilter('Rings')">Rings</button>
+    <button onclick="setFilter('Necklaces')">Necklaces</button>
+    <button onclick="setFilter('Earrings')">Earrings</button>
+    <button onclick="setFilter('Bracelets')">Bracelets</button>
+  </nav>
+  <div class="header-actions">
+    <input type="text" id="searchInput" class="search-input" placeholder="Search collection..." oninput="handleSearch(this.value)" />
+    <button class="cart-btn" onclick="openCart()">
+      Cart <span class="cart-count" id="cartCount">0</span>
+    </button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-copy">
+    <span class="eyebrow">— The Loop Theory —</span>
+    <h1>Every piece<br>closes the <em>loop.</em></h1>
+    <p>Considered jewelry for people who notice details. Rings, chains, and hoops finished to look like high design—direct from our maker network.</p>
+    <a href="#shop" class="btn-primary">
+      Shop the collection
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+  </div>
+  <div class="hero-visual">
+    <svg viewBox="0 0 400 400" fill="none">
+      <circle cx="150" cy="180" r="95" stroke="var(--brass)" stroke-width="3" opacity="0.9"/>
+      <circle cx="240" cy="200" r="95" stroke="var(--verdigris)" stroke-width="3" opacity="0.9"/>
+      <circle cx="150" cy="180" r="95" stroke="var(--brass-bright)" stroke-width="1" stroke-dasharray="2 6" opacity="0.5"/>
+      <circle cx="195" cy="190" r="6" fill="var(--brass-bright)"/>
+    </svg>
+  </div>
+</section>
+
+<div class="strip">
+  <div class="strip-inner" id="marquee"></div>
+</div>
+
+<section class="section" id="shop">
+  <div class="section-head">
+    <div>
+      <span class="eyebrow">The Collection</span>
+      <h2>20 pieces, live now</h2>
+    </div>
+    <div class="filters" id="filters"></div>
+  </div>
+  <div class="grid" id="grid"></div>
+</section>
+
+<div class="values">
+  <div class="value">
+    <h3>Finished, not flashy</h3>
+    <p>We hand-check every listing for finish and plating quality before it earns a spot on the site.</p>
+  </div>
+  <div class="value">
+    <h3>Honest timelines</h3>
+    <p>Pieces ship direct from our maker network, typically arriving in 2–4 weeks.</p>
+  </div>
+  <div class="value">
+    <h3>Small batch pricing</h3>
+    <p>No department store markup. Just a fair margin so we can keep sourcing pieces worth wearing.</p>
+  </div>
+</div>
+
+<footer id="about">
+  <div class="foot-grid">
+    <div class="foot-brand">
+      <div class="brand">Loop Theory</div>
+      <p>An independent jewelry label focusing on quality and direct-to-consumer crafting.</p>
+    </div>
+    <div>
+      <h4>Shop</h4>
+      <ul>
+        <li><a href="#shop" onclick="setFilter('Rings')">Rings</a></li>
+        <li><a href="#shop" onclick="setFilter('Necklaces')">Necklaces</a></li>
+        <li><a href="#shop" onclick="setFilter('Earrings')">Earrings</a></li>
+        <li><a href="#shop" onclick="setFilter('Bracelets')">Bracelets</a></li>
+      </ul>
+    </div>
+    <div>
+      <h4>Support</h4>
+      <ul><li><a href="#">Shipping & Returns</a></li><li><a href="#">FAQ</a></li></ul>
+    </div>
+    <div>
+      <h4>Studio</h4>
+      <ul><li><a href="#">About</a></li><li><a href="#">Instagram</a></li></ul>
+    </div>
+  </div>
+  <div class="foot-bottom">
+    <span>© 2026 Loop Theory. All rights reserved.</span>
+  </div>
+</footer>
+
+<div class="overlay" id="overlay">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<div class="cart-overlay" id="cartOverlay" onclick="closeCart()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h3>Your bag</h3>
+    <button class="modal-close" style="position:static;" onclick="closeCart()">✕</button>
+  </div>
+  <div class="drawer-items" id="drawerItems"></div>
+  <div class="drawer-foot">
+    <div class="subtotal-row"><span>Subtotal</span><strong id="subtotal">$0</strong></div>
+    <button class="btn-primary modal-add" onclick="alert('Checkout process initialized.')">Checkout</button>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
