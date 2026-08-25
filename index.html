@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Loop Theory — Jewelry, considered.</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='12' cy='15' r='8' fill='none' stroke='%23D2AD74' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='15' r='8' fill='none' stroke='%234C8577' stroke-width='2.4'/%3E%3C/svg%3E">
+
+  <!-- Config and theme run before the stylesheet so the chosen
+       palette is on <html> for the first paint, with no flash. -->
+  <script src="js/config.js"></script>
+  <script src="js/theme.js"></script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
@@ -29,6 +36,8 @@
   </nav>
   <div class="header-actions">
     <input type="text" id="searchInput" class="search-input" placeholder="Search collection..." oninput="handleSearch(this.value)" />
+    <span data-theme-toggle></span>
+    <a class="linkish" href="account.html">Account</a>
     <button class="cart-btn" onclick="openCart()">
       Cart <span class="cart-count" id="cartCount">0</span>
     </button>

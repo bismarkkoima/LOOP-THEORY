@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loop Theory — Sign in</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='12' cy='15' r='8' fill='none' stroke='%23D2AD74' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='15' r='8' fill='none' stroke='%234C8577' stroke-width='2.4'/%3E%3C/svg%3E">
+
+  <script src="js/config.js"></script>
+  <script src="js/theme.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<div style="position:fixed;top:20px;right:20px;z-index:10;" id="themeSlot"></div>
+
+<div class="auth-shell">
+  <div class="auth-card">
+    <span class="loopmark">
+      <svg width="40" height="40" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <circle cx="12" cy="15" r="8" stroke="var(--brass-bright)" stroke-width="2.2"/>
+        <circle cx="19" cy="15" r="8" stroke="var(--verdigris)" stroke-width="2.2"/>
+      </svg>
+    </span>
+
+    <h1>Loop Theory</h1>
+    <p class="sub" id="sub">Sign in to manage the catalog.</p>
+
+    <button class="google-btn" id="googleBtn" disabled>
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+        <path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-2.8-.4-4H24v7.3h12.1c-.2 2-1.6 5-4.5 7l-.1.3 6.5 5 .5.1c4.1-3.8 6.6-9.4 6.6-15.7"/>
+        <path fill="#34A853" d="M24 46c5.9 0 10.9-2 14.5-5.3l-6.9-5.4c-1.9 1.3-4.4 2.2-7.6 2.2-5.8 0-10.7-3.8-12.5-9.1l-.3 .1-6.7 5.2-.1.3C7.9 41 15.4 46 24 46"/>
+        <path fill="#FBBC05" d="M11.5 28.4c-.5-1.4-.7-2.9-.7-4.4s.3-3 .7-4.4v-.3l-6.8-5.3-.2.1C2.9 17 2 20.4 2 24s.9 7 2.5 10z"/>
+        <path fill="#EB4335" d="M24 10.4c4.1 0 6.9 1.8 8.5 3.3l6.2-6C34.9 4.3 29.9 2 24 2 15.4 2 7.9 7 4.3 14l7.2 5.6c1.8-5.3 6.7-9.2 12.5-9.2"/>
+      </svg>
+      <span id="googleLabel">Continue with Google</span>
+    </button>
+
+    <div id="setup" class="auth-note" hidden>
+      <strong>Google sign-in is not connected yet</strong>
+      There is no Supabase project configured, so there is nothing to sign in to.
+      To switch it on:
+      <ol>
+        <li>Create a project at <code>supabase.com</code></li>
+        <li>Authentication &rarr; Providers &rarr; enable <b>Google</b>, paste a Google Cloud OAuth client ID and secret</li>
+        <li>Add Supabase's callback URL to that Google client's redirect URIs</li>
+        <li>Put the project URL and <code>anon</code> key into <code>js/config.js</code></li>
+      </ol>
+      Full walkthrough in <code>README.md</code>.
+    </div>
+
+    <div class="auth-alt">
+      <a class="linkish" href="index.html">&larr; Back to the store</a>
+      <span id="skip" hidden> &nbsp;·&nbsp;
+        <a class="linkish" href="admin.html">Open dashboard unsecured</a>
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toasts" role="status" aria-live="polite"></div>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>
