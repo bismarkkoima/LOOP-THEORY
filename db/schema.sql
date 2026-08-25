@@ -133,12 +133,41 @@ end $$;
 create table if not exists public.orders (
   id          uuid primary key,
   created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  -- A shopper is not signed in and cannot read the orders table, so this
+  -- unguessable token is the only way they can see their own order again.
+  token       uuid not null unique default gen_random_uuid(),
   email       text,
+  ship_name   text,
+  ship_line1  text,
+  ship_line2  text,
+  ship_city   text,
+  ship_postal text,
+  ship_country text,
+  note        text,
   subtotal    numeric(10,2) not null check (subtotal >= 0),
   currency    text not null default 'USD',
   status      text not null default 'pending'
               check (status in ('pending', 'paid', 'shipped', 'cancelled'))
 );
+
+-- additive, so an existing table from an earlier run catches up
+alter table public.orders add column if not exists updated_at   timestamptz not null default now();
+alter table public.orders add column if not exists token        uuid not null default gen_random_uuid();
+alter table public.orders add column if not exists ship_name    text;
+alter table public.orders add column if not exists ship_line1   text;
+alter table public.orders add column if not exists ship_line2   text;
+alter table public.orders add column if not exists ship_city    text;
+alter table public.orders add column if not exists ship_postal  text;
+alter table public.orders add column if not exists ship_country text;
+alter table public.orders add column if not exists note         text;
+
+create unique index if not exists orders_token_idx on public.orders (token);
+
+drop trigger if exists orders_touch_updated_at on public.orders;
+create trigger orders_touch_updated_at
+  before update on public.orders
+  for each row execute function public.touch_updated_at();
 
 create table if not exists public.order_items (
   id          bigint generated always as identity primary key,
@@ -193,18 +222,39 @@ end $$;
 -- subtotal means a $285 ring can be bought for $1.
 -- ------------------------------------------------------------
 
-create or replace function public.place_order(p_email text, p_items jsonb)
-returns uuid
+-- The return type changes between versions, which create-or-replace
+-- cannot do, so the old signature is dropped first.
+drop function if exists public.place_order(text, jsonb);
+drop function if exists public.place_order(jsonb, jsonb);
+
+create or replace function public.place_order(p_details jsonb, p_items jsonb)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
   v_order    uuid := gen_random_uuid();
+  v_token    uuid := gen_random_uuid();
+  v_email    text := nullif(trim(coalesce(p_details ->> 'email', '')), '');
   v_subtotal numeric(10,2);
   v_lines    integer;
+  v_recent   integer;
 begin
-  -- ignores unknown or inactive ids rather than trusting the cart
+  -- A cheap brake on scripted junk. Not real rate limiting: without the
+  -- caller's IP this can only key on a self-declared address. See README.
+  if v_email is not null then
+    select count(*) into v_recent
+    from public.orders
+    where email = v_email and created_at > now() - interval '1 hour';
+
+    if v_recent >= 10 then
+      raise exception 'too many orders from this address in the last hour';
+    end if;
+  end if;
+
+  -- Prices come from the table, never from the request, and unknown or
+  -- retired products are ignored rather than trusted.
   select count(*), coalesce(sum(p.price * i.qty), 0)
     into v_lines, v_subtotal
   from jsonb_to_recordset(p_items) as i(product_id text, qty integer)
@@ -215,8 +265,20 @@ begin
     raise exception 'order contains no purchasable items';
   end if;
 
-  insert into public.orders (id, email, subtotal)
-  values (v_order, nullif(trim(p_email), ''), v_subtotal);
+  insert into public.orders (
+    id, token, email, subtotal,
+    ship_name, ship_line1, ship_line2, ship_city, ship_postal, ship_country, note
+  )
+  values (
+    v_order, v_token, v_email, v_subtotal,
+    nullif(trim(coalesce(p_details ->> 'name',    '')), ''),
+    nullif(trim(coalesce(p_details ->> 'line1',   '')), ''),
+    nullif(trim(coalesce(p_details ->> 'line2',   '')), ''),
+    nullif(trim(coalesce(p_details ->> 'city',    '')), ''),
+    nullif(trim(coalesce(p_details ->> 'postal',  '')), ''),
+    nullif(trim(coalesce(p_details ->> 'country', '')), ''),
+    nullif(trim(coalesce(p_details ->> 'note',    '')), '')
+  );
 
   insert into public.order_items (order_id, product_id, name, unit_price, qty)
   select v_order, p.id, p.name, p.price, i.qty
@@ -224,12 +286,99 @@ begin
   join public.products p on p.id = i.product_id and p.active
   where i.qty between 1 and 99;
 
-  return v_order;
+  -- The token is returned once. It is the shopper's only way back in.
+  return jsonb_build_object('id', v_order, 'token', v_token, 'subtotal', v_subtotal);
 end $$;
 
--- security definer runs as the owner, so hand it out deliberately
-revoke all on function public.place_order(text, jsonb) from public;
-grant execute on function public.place_order(text, jsonb) to anon, authenticated;
+revoke all on function public.place_order(jsonb, jsonb) from public;
+grant execute on function public.place_order(jsonb, jsonb) to anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- Reading one order back
+--
+-- Orders carry an address, so they are not public. This takes the
+-- token issued at checkout and returns exactly one order, which is
+-- why the token is a uuid rather than anything guessable.
+-- ------------------------------------------------------------
+
+create or replace function public.get_order(p_token uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v jsonb;
+begin
+  select jsonb_build_object(
+           'id', o.id,
+           'created_at', o.created_at,
+           'status', o.status,
+           'subtotal', o.subtotal,
+           'currency', o.currency,
+           'email', o.email,
+           'ship_name', o.ship_name,
+           'ship_line1', o.ship_line1,
+           'ship_line2', o.ship_line2,
+           'ship_city', o.ship_city,
+           'ship_postal', o.ship_postal,
+           'ship_country', o.ship_country,
+           'note', o.note,
+           'items', coalesce((
+             select jsonb_agg(jsonb_build_object(
+                      'product_id', i.product_id,
+                      'name', i.name,
+                      'unit_price', i.unit_price,
+                      'qty', i.qty) order by i.id)
+             from public.order_items i where i.order_id = o.id), '[]'::jsonb)
+         )
+    into v
+  from public.orders o
+  where o.token = p_token;
+
+  if v is null then
+    raise exception 'no order with that reference';
+  end if;
+
+  return v;
+end $$;
+
+revoke all on function public.get_order(uuid) from public;
+grant execute on function public.get_order(uuid) to anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- Moving an order along
+--
+-- Admins only, and checked inside the function rather than trusted
+-- from the client.
+-- ------------------------------------------------------------
+
+create or replace function public.set_order_status(p_order uuid, p_status text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'not authorised';
+  end if;
+
+  if p_status not in ('pending', 'paid', 'shipped', 'cancelled') then
+    raise exception 'unknown status %', p_status;
+  end if;
+
+  update public.orders set status = p_status where id = p_order;
+
+  if not found then
+    raise exception 'no such order';
+  end if;
+end $$;
+
+revoke all on function public.set_order_status(uuid, text) from public;
+grant execute on function public.set_order_status(uuid, text) to authenticated;
 
 
 -- ------------------------------------------------------------

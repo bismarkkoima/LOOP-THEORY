@@ -127,11 +127,13 @@
         });
     },
 
-    /* Sends ids and quantities only. The subtotal shown in the drawer is
-       for the shopper's benefit; place_order() recomputes it from the
-       products table, because anything sent from here can be edited. */
+    /* Sends ids, quantities and delivery details only. The subtotal shown
+       in the drawer is for the shopper's benefit; place_order() recomputes
+       it from the products table, because anything sent from here can be
+       edited by whoever is holding the browser. */
     createOrder: function (order) {
-      const lines = (order && order.items || [])
+      order = order || {};
+      const lines = (order.items || [])
         .map(function (l) { return { product_id: l.id, qty: l.qty }; })
         .filter(function (l) { return Catalog.get(l.product_id); });
 
@@ -142,19 +144,102 @@
       if (mode !== 'supabase') {
         /* Nowhere to write yet. Report that honestly rather than
            showing a confirmation for an order nobody received. */
-        return Promise.resolve({ id: null, stored: false });
+        return Promise.resolve({ id: null, token: null, stored: false });
       }
 
       return window.LTSupabase.client()
         .then(function (client) {
           return client.rpc('place_order', {
-            p_email: (order && order.email) || '',
+            p_details: order.details || {},
             p_items: lines
           });
         })
         .then(function (res) {
           if (res.error) throw res.error;
-          return { id: res.data, stored: true };
+          const d = res.data || {};
+          return { id: d.id, token: d.token, subtotal: d.subtotal, stored: true };
+        });
+    },
+
+    /* One order, by the token issued at checkout. The shopper cannot read
+       the orders table, so this is their only way back to it. */
+    getOrder: function (token) {
+      if (mode !== 'supabase') {
+        return Promise.reject(new Error('No database is configured, so there are no orders to look up.'));
+      }
+      return window.LTSupabase.client()
+        .then(function (client) { return client.rpc('get_order', { p_token: token }); })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return res.data;
+        });
+    },
+
+    /* Admin only — the RLS policy on orders decides, not this call. */
+    listOrders: function (opts) {
+      opts = opts || {};
+      if (mode !== 'supabase') {
+        return Promise.reject(new Error('No database is configured.'));
+      }
+      return window.LTSupabase.client()
+        .then(function (client) {
+          let q = client.from('orders')
+            .select('id, created_at, status, subtotal, currency, email, ship_name, ship_city, ship_country, token')
+            .order('created_at', { ascending: false })
+            .limit(opts.limit || 100);
+          if (opts.status && opts.status !== 'all') q = q.eq('status', opts.status);
+          return q;
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return res.data || [];
+        });
+    },
+
+    orderItems: function (orderId) {
+      return window.LTSupabase.client()
+        .then(function (client) {
+          return client.from('order_items')
+            .select('product_id, name, unit_price, qty')
+            .eq('order_id', orderId)
+            .order('id', { ascending: true });
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return res.data || [];
+        });
+    },
+
+    setOrderStatus: function (orderId, status) {
+      return window.LTSupabase.client()
+        .then(function (client) {
+          return client.rpc('set_order_status', { p_order: orderId, p_status: status });
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return true;
+        });
+    },
+
+    /* Admin product writes. The "admins manage products" policy is what
+       actually permits these; an ordinary visitor's call is refused. */
+    saveProduct: function (row) {
+      return window.LTSupabase.client()
+        .then(function (client) { return client.from(TABLE).upsert(row).select().single(); })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return res.data;
+        });
+    },
+
+    setActive: function (productId, active) {
+      return window.LTSupabase.client()
+        .then(function (client) {
+          return client.from(TABLE).update({ active: !!active }).eq('id', productId);
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          return true;
         });
     }
   };

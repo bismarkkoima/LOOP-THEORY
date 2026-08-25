@@ -15,12 +15,24 @@ you configure a Supabase project.
 * **Google sign-in:** Account system via Supabase Auth, gating the dashboard.
 * **Light and dark themes:** Remembered per visitor, or following the OS setting.
 * **Postgres catalog:** Products and orders in Supabase, with the bundled catalog as a fallback.
+* **Real checkout:** Delivery details, an order written in one transaction, and a link the customer can come back to.
+* **Order management:** A dashboard for moving orders between pending, paid, shipped and cancelled.
 
 ## 📁 Project Structure
 
 ```text
 loop-theory/
-├── index.html            # Storefront
+├── index.html            # Storefront (everything)
+├── rings.html            # One page per category
+├── necklaces.html
+├── earrings.html
+├── bracelets.html
+├── shipping.html         # Shipping & returns
+├── faq.html              # FAQ
+├── about.html            # About the studio
+├── order.html            # A customer's own order, by token
+├── orders.html           # Order management (noindex)
+├── db-check.html         # Connection check (noindex)
 ├── admin.html            # Photo dashboard (noindex)
 ├── login.html            # Google sign-in (noindex)
 ├── account.html          # Account details + appearance (noindex)
@@ -32,7 +44,10 @@ loop-theory/
 │   ├── theme.js          # Light/dark engine — loaded in <head>
 │   ├── supabase-client.js# Shared, memoised Supabase client
 │   ├── data.js           # Bundled catalog + generated SVG artwork
-│   ├── catalog.js        # Catalog adapter (Postgres | bundled data.js)
+│   ├── catalog.js        # Data layer: products, orders, photos
+│   ├── order.js          # Customer order page
+│   ├── orders.js         # Order management
+│   ├── motion.js         # Entrance motion, opt-in and reduced-motion safe
 │   ├── store.js          # Photo storage adapter (Supabase | IndexedDB)
 │   ├── auth.js           # Google sign-in, session, admin check
 │   ├── admin.js          # Dashboard behaviour
@@ -242,9 +257,22 @@ any `photo_url` you have set is left alone.
 | Table | Holds | Who can read | Who can write |
 | --- | --- | --- | --- |
 | `products` | The catalog | Anyone (active rows) | Admins |
-| `orders` | One row per checkout | Admins | `place_order()` only |
+| `orders` | One row per checkout, with delivery address | Admins, or the holder of the order's token | `place_order()` only |
 | `order_items` | The lines of an order | Admins | `place_order()` only |
 | `admins` | Who counts as an admin | Admins | Nobody, from the browser |
+
+Four functions carry everything that is not a plain read:
+
+| Function | Who may call it | What it does |
+| --- | --- | --- |
+| `place_order(details, items)` | Anyone | Writes an order and its lines in one transaction, pricing it from the table. Returns the order id and its token. |
+| `get_order(token)` | Anyone holding the token | Returns exactly one order with its lines. |
+| `set_order_status(id, status)` | Admins | Moves an order between pending / paid / shipped / cancelled. Checks `is_admin()` itself. |
+| `is_admin()` | Internal | Whether the caller's email is in `admins`. |
+
+**There is no stock column, deliberately.** Nothing is warehoused — pieces are
+made after they are ordered, which is what the whole site says. Retiring a piece
+is `active = false`, not a count reaching zero.
 
 Artwork is **not** stored. Each row keeps a `metal` and an `art` variant, and
 the storefront redraws the SVG from those at render time — so the art stays
@@ -278,20 +306,45 @@ half-succeed and leave an order with no lines in it.
 Because of that, neither `orders` nor `order_items` grants insert to anyone.
 There is no way to write a row except through the function.
 
+### Seeing and managing orders
+
+`orders.html` lists every order newest first, filterable by status. Open one for
+its lines, the customer's address, and buttons to move it along. The status
+buttons call `set_order_status()`, which checks `is_admin()` in the database —
+the page's own gate only decides what to draw.
+
+Each row also shows the customer's `order.html?ref=…` link.
+
+### What the customer sees
+
+Checkout collects a name, email and delivery address in the cart drawer, then
+returns a **token**. The confirmation shows an `order.html?ref=<token>` link, and
+that link is the only way back to the order.
+
+That is deliberate. Orders carry a home address, so the table is not public, and
+a shopper is not signed in. A uuid token in a link is the smallest thing that
+lets someone see their own order without letting them enumerate everybody
+else's. The consequence is that a lost link cannot be recovered by email address
+— you would have to look the order up in the dashboard and send the link on.
+
 ### Before you take real orders
 
 This is a working order table, not a checkout. It records what someone asked
 for; it does not take payment, reserve stock, or email anybody. Also:
 
-* **`place_order` is open to anonymous callers** — necessarily, since
-  shoppers are not signed in. Someone could script it and fill the table with
-  junk orders. Put a rate limit or a CAPTCHA in front of it, or require
-  sign-in, before the URL is public.
-* **Nobody can read an order back, including the person who placed it.**
-  Order confirmation pages need a design decision first: either sign shoppers
-  in, or issue a token per order.
-* **No payment provider is wired in.** `status` starts at `pending` and stays
-  there until something moves it.
+* **`place_order` is open to anonymous callers** — necessarily, since shoppers
+  are not signed in. It refuses more than ten orders an hour from the same email
+  address, which is a speed bump and not rate limiting: the address is
+  self-declared and Postgres cannot see the caller's IP. Put a CAPTCHA or an
+  edge rate limit in front of it before the URL is public.
+* **No payment provider is wired in.** `status` starts at `pending` and only
+  moves when someone moves it in the dashboard. Nothing is charged.
+* **No email is sent.** Not on order, not on dispatch. The confirmation link is
+  shown on screen once and that is all — wire an email provider before this is
+  a real shop, or customers will lose their only route back to their order.
+* **`get_order` is unauthenticated by design.** Anyone with the token sees the
+  order, including its delivery address. Tokens are uuids and are not
+  enumerable, but they are also not secret once shared.
 
 
 ## ▲ Deploying to Vercel

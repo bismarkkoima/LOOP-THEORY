@@ -320,6 +320,46 @@ footer ul a:hover{color:var(--brass-bright);}
 .subtotal-row strong{font-family:var(--display);font-size:18px;color:var(--brass-bright);}
 .empty-cart{padding:60px 20px;text-align:center;color:var(--paper-dim);font-size:14px;}
 
+/* ---------- checkout, inside the drawer ---------- */
+
+.co-form{display:flex;flex-direction:column;gap:13px;padding:6px 0 4px;}
+.co-back{
+  align-self:flex-start;background:none;border:none;padding:0;
+  color:var(--paper-dim);font-size:12px;letter-spacing:0.05em;
+  text-transform:uppercase;font-weight:600;
+}
+.co-back:hover{color:var(--brass-bright);}
+.co-intro{margin:0 0 2px;font-size:13px;color:var(--paper-dim);}
+.co-field{display:flex;flex-direction:column;gap:5px;}
+.co-field span{
+  font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--paper-dim);font-weight:700;
+}
+.co-field span em{font-style:normal;opacity:0.65;font-weight:600;}
+.co-field input,.co-field select{
+  background:var(--ink-2);border:1px solid var(--line);color:var(--paper);
+  border-radius:8px;padding:11px 13px;font-family:inherit;font-size:14px;
+  outline:none;transition:border-color .2s;width:100%;
+}
+.co-field input:focus,.co-field select:focus{border-color:var(--brass);}
+.co-row{display:flex;gap:11px;}
+.co-row .half{flex:1;min-width:0;}
+
+.co-done{padding:26px 0 8px;text-align:center;}
+.co-tick{
+  width:46px;height:46px;margin:0 auto 16px;border-radius:50%;
+  border:1.5px solid var(--verdigris);color:var(--verdigris);
+  display:flex;align-items:center;justify-content:center;
+}
+.co-tick svg{width:22px;height:22px;}
+.co-done h3{font-family:var(--display);font-size:21px;font-weight:450;margin:0 0 10px;}
+.co-done p{font-size:13.5px;line-height:1.6;color:var(--paper-dim);margin:0 0 12px;}
+.co-link{
+  color:var(--brass-bright);text-decoration:underline;
+  text-underline-offset:3px;font-weight:600;font-size:14px;
+}
+.co-hint{font-size:12px;opacity:0.8;}
+
 /* ============================================================
    MOTION
    Every hidden state is scoped to .lt-motion, which motion.js puts

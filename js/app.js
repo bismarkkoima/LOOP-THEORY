@@ -42,6 +42,8 @@
   const state = {
     category: 'All',
     query: '',
+    view: 'bag',      /* 'bag' | 'checkout' | 'done' */
+    placed: null,
     cart: []          /* [{ id, qty }] — ordered by when each piece was first added */
   };
 
@@ -273,6 +275,20 @@
   function renderCart() {
     let count = 0, total = 0;
 
+    if (state.view !== 'bag') {
+      state.cart.forEach(function (l) {
+        const p = product(l.id);
+        if (!p) return;
+        count += l.qty;
+        total += p.price * l.qty;
+      });
+      if (state.view === 'checkout') renderCheckoutForm(); else renderPlaced();
+      el.subtotal.textContent = money(total);
+      el.cartCount.textContent = count;
+      updateFoot();
+      return;
+    }
+
     const rows = state.cart.map(function (l) {
       const p = product(l.id);
       count += l.qty;
@@ -299,9 +315,176 @@
 
     el.subtotal.textContent = money(total);
     el.cartCount.textContent = count;
+    updateFoot();
   }
 
   /* ---------- checkout ---------- */
+
+  const COUNTRIES = ['United States', 'Canada', 'United Kingdom', 'Ireland', 'Australia',
+                     'New Zealand', 'Germany', 'France', 'Netherlands', 'Kenya', 'Other'];
+
+  /* Delivery details are remembered per browser so a second order is not a
+     second round of typing. They stay on this device except as part of an
+     order the shopper actually places. */
+  const DETAILS_KEY = 'lt-details';
+
+  function readDetails() {
+    try { return JSON.parse(localStorage.getItem(DETAILS_KEY) || '{}') || {}; }
+    catch (err) { return {}; }
+  }
+
+  function readDetail(name) {
+    const d = readDetails();
+    return d[name] == null ? '' : d[name];
+  }
+
+  function saveDetails(d) {
+    try { localStorage.setItem(DETAILS_KEY, JSON.stringify(d)); } catch (err) {}
+  }
+
+  function footButton() {
+    return el.drawer.querySelector('.drawer-foot .btn-primary');
+  }
+
+  function updateFoot() {
+    const btn = footButton();
+    const subtotalRow = el.drawer.querySelector('.subtotal-row');
+    if (!btn) return;
+
+    btn.disabled = false;
+    if (state.view === 'bag') {
+      subtotalRow.style.display = '';
+      btn.textContent = 'Checkout';
+      btn.onclick = goToCheckout;
+    } else if (state.view === 'checkout') {
+      subtotalRow.style.display = '';
+      btn.textContent = 'Place order';
+      btn.onclick = submitOrder;
+    } else {
+      subtotalRow.style.display = 'none';
+      btn.textContent = 'Continue shopping';
+      btn.onclick = function () { state.view = 'bag'; renderCart(); closeCart(); };
+    }
+  }
+
+  function goToCheckout() {
+    if (!state.cart.length) return note('Your bag is empty.', 'warn');
+    state.view = 'checkout';
+    note('');
+    renderCart();
+    const first = el.drawerItems.querySelector('input');
+    if (first) first.focus();
+  }
+
+  function field(name, label, opts) {
+    opts = opts || {};
+    const saved = esc(readDetail(name));
+    const cls = 'co-field' + (opts.half ? ' half' : '');
+
+    if (opts.options) {
+      return '<label class="' + cls + '"><span>' + esc(label) + '</span>' +
+        '<select name="' + name + '">' +
+          opts.options.map(function (o) {
+            return '<option value="' + esc(o) + '"' + (o === saved ? ' selected' : '') + '>' + esc(o) + '</option>';
+          }).join('') +
+        '</select></label>';
+    }
+
+    return '<label class="' + cls + '"><span>' + esc(label) +
+      (opts.optional ? ' <em>optional</em>' : '') + '</span>' +
+      '<input name="' + name + '" type="' + (opts.type || 'text') + '" value="' + saved + '"' +
+      (opts.type === 'email' ? ' autocomplete="email"' : '') + '></label>';
+  }
+
+  function renderCheckoutForm() {
+    const units = state.cart.reduce(function (n, l) { return n + l.qty; }, 0);
+    el.drawerItems.innerHTML =
+      '<form class="co-form" id="checkoutForm" novalidate>' +
+        '<button type="button" class="co-back" data-back>\u2190 Back to bag</button>' +
+        '<p class="co-intro">' + units + (units === 1 ? ' piece' : ' pieces') +
+          ', made to order and shipping in 2\u20134 weeks.</p>' +
+        field('name', 'Full name') +
+        field('email', 'Email', { type: 'email' }) +
+        field('line1', 'Address') +
+        field('line2', 'Apartment, suite', { optional: true }) +
+        '<div class="co-row">' +
+          field('city', 'City', { half: true }) +
+          field('postal', 'Postcode', { half: true }) +
+        '</div>' +
+        field('country', 'Country', { options: COUNTRIES }) +
+        field('note', 'Anything we should know', { optional: true }) +
+      '</form>';
+  }
+
+  function renderPlaced() {
+    const p = state.placed || {};
+    const link = p.token ? 'order.html?ref=' + encodeURIComponent(p.token) : null;
+    el.drawerItems.innerHTML =
+      '<div class="co-done">' +
+        '<div class="co-tick" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5l5.5 5.5L20 7" stroke="currentColor" ' +
+          'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</div>' +
+        '<h3>Order placed</h3>' +
+        '<p>Your reference is <strong>' + esc(String(p.id || '').slice(0, 8)) + '</strong>. ' +
+          'Nothing has been emailed and nothing has been charged \u2014 this records the order.</p>' +
+        (link
+          ? '<p><a class="co-link" href="' + link + '">View your order</a></p>' +
+            '<p class="co-hint">Keep that link. It is the only way back to this order.</p>'
+          : '') +
+      '</div>';
+  }
+
+  function submitOrder() {
+    const form = document.getElementById('checkoutForm');
+    if (!form) return;
+
+    const details = {};
+    Array.prototype.forEach.call(form.querySelectorAll('input, select, textarea'), function (f) {
+      details[f.name] = f.value.trim();
+    });
+
+    const LABELS = { name: 'full name', email: 'email', line1: 'address', city: 'city' };
+    const missing = Object.keys(LABELS).filter(function (k) { return !details[k]; });
+    if (missing.length) {
+      note('Still needed: ' + missing.map(function (k) { return LABELS[k]; }).join(', ') + '.', 'warn');
+      const f = form.querySelector('[name="' + missing[0] + '"]');
+      if (f) f.focus();
+      return;
+    }
+    if (details.email.indexOf('@') < 1) {
+      note('That email address does not look right.', 'warn');
+      form.querySelector('[name="email"]').focus();
+      return;
+    }
+
+    saveDetails(details);
+
+    const btn = footButton();
+    btn.disabled = true;
+    btn.textContent = 'Placing order\u2026';
+    note('');
+
+    Catalog.createOrder({ items: state.cart, details: details })
+      .then(function (res) {
+        if (!res.stored) {
+          note('Checkout is not connected yet \u2014 the database has not been set up (see db/schema.sql).', 'warn');
+          btn.disabled = false;
+          btn.textContent = 'Place order';
+          return;
+        }
+        state.placed = res;
+        state.cart = [];
+        saveCart();
+        state.view = 'done';
+        renderCart();
+      })
+      .catch(function (err) {
+        note('Could not place the order: ' + ((err && err.message) || err), 'warn');
+        btn.disabled = false;
+        btn.textContent = 'Place order';
+      });
+  }
 
   function note(text, kind) {
     let n = document.getElementById('drawerNote');
@@ -312,36 +495,6 @@
     }
     n.className = 'drawer-note' + (kind ? ' ' + kind : '');
     n.textContent = text;
-  }
-
-  function checkout() {
-    if (!state.cart.length) return note('Your bag is empty.', 'warn');
-
-    const btn = el.drawer.querySelector('.drawer-foot .btn-primary');
-    const label = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = 'Placing order…';
-    note('');
-
-    Catalog.createOrder({ items: state.cart })
-      .then(function (res) {
-        if (!res.stored) {
-          /* No database configured. Say so rather than showing a
-             confirmation for an order nobody received. */
-          return note('Checkout is not connected yet — set up the database first (see db/schema.sql).', 'warn');
-        }
-        state.cart = [];
-        saveCart();
-        renderCart();
-        note('Order placed. Your reference is ' + String(res.id).slice(0, 8) + '.', 'ok');
-      })
-      .catch(function (err) {
-        note('Could not place the order: ' + ((err && err.message) || err), 'warn');
-      })
-      .then(function () {
-        btn.disabled = false;
-        btn.textContent = label;
-      });
   }
 
   function openCart() {
@@ -378,6 +531,12 @@
     });
 
     el.drawerItems.addEventListener('click', function (e) {
+      if (e.target.closest('[data-back]')) {
+        state.view = 'bag';
+        note('');
+        return renderCart();
+      }
+
       const qty = e.target.closest('[data-qty]');
       if (qty) return changeQty(qty.getAttribute('data-id'), parseInt(qty.getAttribute('data-qty'), 10));
 
@@ -427,7 +586,7 @@
   window.openModal = openModal;
   window.closeModal = closeModal;
   window.addToCart = addToCart;
-  window.checkout = checkout;
+  window.checkout = goToCheckout;
 
   document.addEventListener('DOMContentLoaded', init);
 })();

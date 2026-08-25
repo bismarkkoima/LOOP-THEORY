@@ -54,6 +54,7 @@
   <nav class="pagenav">
     <a href="index.html">Store</a>
     <a href="admin.html">Dashboard</a>
+    <a href="orders.html">Orders</a>
     <a href="db-check.html" aria-current="page">Connection</a>
   </nav>
   <div class="page-head-actions"><span data-theme-toggle></span></div>
@@ -195,6 +196,43 @@
         c6.fail('Not found — run <code>db/schema.sql</code>.');
       } else {
         c6.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 6b — order lookup */
+    const c6b = row('Order lookup');
+    try {
+      const res = await client.rpc('get_order', { p_token: '00000000-0000-0000-0000-000000000000' });
+      if (res.error) throw res.error;
+      c6b.fail('Returned a row for a zero token, which should not happen.');
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/no order with that reference/i.test(m)) {
+        c6b.pass('<code>get_order()</code> exists and refused an unknown reference.');
+      } else if (/Could not find the function|does not exist|schema cache/i.test(m)) {
+        c6b.fail('Not found — re-run <code>db/schema.sql</code>; it gained new functions.');
+      } else {
+        c6b.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 6c — admin status function */
+    const c6c = row('Order status function');
+    try {
+      const res = await client.rpc('set_order_status', {
+        p_order: '00000000-0000-0000-0000-000000000000', p_status: 'pending' });
+      if (res.error) throw res.error;
+      c6c.fail('Allowed a status change while signed out — check the is_admin() guard.');
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/not authorised/i.test(m)) {
+        c6c.pass('<code>set_order_status()</code> exists and refused an unauthenticated caller.');
+      } else if (/no such order/i.test(m)) {
+        c6c.pass('Exists. You are signed in as an admin.');
+      } else if (/Could not find the function|does not exist|schema cache/i.test(m)) {
+        c6c.fail('Not found — re-run <code>db/schema.sql</code>.');
+      } else {
+        c6c.fail('<code>' + esc(m) + '</code>');
       }
     }
 
