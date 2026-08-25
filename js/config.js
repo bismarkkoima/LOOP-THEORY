@@ -14,8 +14,11 @@
      1. Create a project at supabase.com
      2. Storage → New bucket → name it `product-photos`
      3. Tick "Public bucket" so the storefront can read the images
-     4. Project Settings → API → copy the Project URL and the
-        `anon` / `public` key into the fields below
+     4. Project Settings → API Keys → copy the key into the field
+        below. Newer projects show a **Publishable key** starting
+        `sb_publishable_`; older ones a legacy **anon** key, which
+        is a JWT starting `eyJ`. Either works — take whichever your
+        project shows, and never a Secret or service_role key.
 
    The anon key is designed to be public — it is safe in client
    code. What is NOT safe by default: a public bucket with a
@@ -26,8 +29,8 @@
    ============================================================ */
 
 window.LT_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://uvkobqezzaxvlfzbjcpm.supabase.co',
+  supabaseAnonKey: '',   /* <- paste the Publishable key here */
   supabaseBucket: 'product-photos',
 
   /* Google sign-in: enable the Google provider in Supabase
