@@ -257,6 +257,15 @@ footer ul a:hover{color:var(--brass-bright);}
 .subtotal-row strong{font-family:var(--display);font-size:18px;color:var(--brass-bright);}
 .empty-cart{padding:60px 20px;text-align:center;color:var(--paper-dim);font-size:14px;}
 
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+/* The header is sticky, so an in-page jump must stop short of it or the
+   heading it landed on sits underneath. */
+#shop, #about{scroll-margin-top:104px;}
+
+/* --- tablet & below --- */
 @media (max-width:900px){
   header{padding:16px 20px;}
   nav.mainnav{display:none;}
@@ -265,4 +274,91 @@ footer ul a:hover{color:var(--brass-bright);}
   .values, .foot-grid{grid-template-columns:1fr;}
   .section{padding:56px 20px;}
   .modal{grid-template-columns:1fr;}
+
+  /* The header nav is hidden here, so these chips are the only way to
+     change category — keep them on one swipeable line, bleeding to the
+     screen edge rather than stacking into three rows. */
+  .section-head{align-items:flex-start;}
+  .filters{
+    width:100%;flex-wrap:nowrap;overflow-x:auto;
+    margin:0 -20px;padding:2px 20px 4px;
+    scrollbar-width:none;-ms-overflow-style:none;
+    -webkit-overflow-scrolling:touch;
+  }
+  .filters::-webkit-scrollbar{display:none;}
+  .filter-btn{flex:0 0 auto;}
+
+  .modal-media{padding:28px;}
+  .modal-media svg{width:auto;height:180px;}
+  .drawer{width:100%;max-width:100%;}
+}
+
+/* --- phones --- */
+@media (max-width:560px){
+  /* Two rows: the brand keeps the top line, search and cart share the next.
+     A single row cannot hold all three without crushing the search field. */
+  header{flex-wrap:wrap;row-gap:12px;padding:14px 18px;}
+  .brand{font-size:19px;gap:8px;}
+  .brand svg{width:26px;height:26px;}
+  .header-actions{width:100%;gap:10px;}
+  .search-input{
+    flex:1;width:auto;min-width:0;
+    font-size:16px;padding:10px 16px;   /* 16px stops iOS zooming on focus */
+  }
+  .search-input:focus{width:auto;}
+  .cart-btn{flex:0 0 auto;padding:10px 14px;}
+
+  .hero{padding:44px 18px 52px;gap:26px;}
+  .hero-visual{height:190px;}
+  .hero-copy h1{margin:14px 0 18px;}
+  .hero-copy p{font-size:15px;margin-bottom:26px;}
+  .hero-copy .btn-primary{width:100%;justify-content:center;}
+
+  .strip-inner{gap:36px;}
+  .strip span{font-size:14px;}
+
+  .section{padding:44px 18px;}
+  .section-head{margin-bottom:26px;gap:14px;}
+  .section-head h2{font-size:27px;}
+  .filters{margin:0 -18px;padding:2px 18px 4px;}
+
+  /* Two across: jewelry reads fine small, and one giant card per screen
+     turns twenty pieces into a very long scroll. */
+  .grid{grid-template-columns:repeat(2,1fr);}
+  .card-media svg{width:60%;height:60%;}
+  .card-index{top:10px;left:10px;}
+  .card-body{padding:13px 12px 17px;}
+  .card-name{font-size:15px;margin:5px 0 7px;}
+  .card-cat{font-size:9px;}
+  .card-price .now{font-size:14px;}
+  .card-price .was{font-size:11px;}
+
+  .value{padding:32px 20px;}
+  footer{padding:44px 18px 32px;}
+  .foot-grid{gap:32px;margin-bottom:36px;}
+  .foot-bottom{flex-direction:column;align-items:flex-start;gap:10px;}
+
+  .overlay{padding:12px;}
+  .modal{border-radius:16px;max-height:92vh;}
+  .modal-media{padding:22px;}
+  .modal-media svg{height:148px;}
+  .modal-body{padding:26px 22px 30px;}
+  .modal-body h2{font-size:24px;}
+  .modal-price{font-size:20px;}
+  .modal-desc{margin-bottom:22px;}
+
+  .drawer-head{padding:18px 20px;}
+  .drawer-items{padding:6px 20px;}
+  .drawer-item .thumb{width:56px;height:56px;}
+  /* 22px is under the comfortable tap target on a touch screen. */
+  .qty-btn{width:29px;height:29px;font-size:15px;}
+  .remove-btn{font-size:12px;}
+  .drawer-foot{padding:18px 20px calc(22px + env(safe-area-inset-bottom));}
+}
+
+/* --- touch devices: nothing may hide behind :hover --- */
+@media (hover:none){
+  .card-quick{opacity:1;transform:none;font-size:10px;padding:9px;}
+  .card:hover .card-media svg{transform:none;}
+  .btn-primary:hover{transform:none;}
 }
