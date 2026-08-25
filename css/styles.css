@@ -320,6 +320,32 @@ footer ul a:hover{color:var(--brass-bright);}
 .subtotal-row strong{font-family:var(--display);font-size:18px;color:var(--brass-bright);}
 .empty-cart{padding:60px 20px;text-align:center;color:var(--paper-dim);font-size:14px;}
 
+/* ============================================================
+   MOTION
+   Every hidden state is scoped to .lt-motion, which motion.js puts
+   on <body>. No script, no hiding — the page renders in full.
+   ============================================================ */
+.lt-motion .lt-rise{
+  opacity:0;
+  transform:translateY(14px);
+  transition:opacity .5s cubic-bezier(.22,.61,.36,1), transform .5s cubic-bezier(.22,.61,.36,1);
+  transition-delay:var(--lt-delay,0ms);
+}
+.lt-motion .lt-rise.is-in{opacity:1;transform:none;}
+
+.lt-motion .lt-lift{
+  opacity:0;
+  transform:translateY(10px);
+  transition:opacity .55s cubic-bezier(.22,.61,.36,1), transform .55s cubic-bezier(.22,.61,.36,1);
+  transition-delay:var(--lt-delay,0ms);
+}
+.lt-motion .is-in .lt-lift{opacity:1;transform:none;}
+
+@media (prefers-reduced-motion: reduce){
+  .lt-motion .lt-rise,
+  .lt-motion .lt-lift{opacity:1;transform:none;transition:none;}
+}
+
 /* Each value restates a promise that has a page behind it — so it links there. */
 .value{display:flex;flex-direction:column;align-items:flex-start;}
 .value p{flex:1;}
