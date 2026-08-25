@@ -12,6 +12,17 @@
 
   const CART_KEY = 'lt-cart';
 
+  /* Each category is its own page, so a category is a destination rather
+     than a piece of in-page state. Filtering that never changes the URL
+     cannot be linked to, bookmarked, or reached with the back button. */
+  const CATEGORY_PAGES = {
+    'All':       'index.html',
+    'Rings':     'rings.html',
+    'Necklaces': 'necklaces.html',
+    'Earrings':  'earrings.html',
+    'Bracelets': 'bracelets.html'
+  };
+
   const el = {
     marquee:     document.getElementById('marquee'),
     filters:     document.getElementById('filters'),
@@ -112,17 +123,21 @@
   function renderFilters() {
     el.filters.innerHTML = CATEGORIES.map(function (cat) {
       const on = cat === state.category ? ' active' : '';
-      return '<button class="filter-btn' + on + '" data-filter="' + cat + '">' + cat + '</button>';
+      const here = cat === state.category ? ' aria-current="page"' : '';
+      return '<a class="filter-btn' + on + '" href="' + CATEGORY_PAGES[cat] + '"' + here + '>' + cat + '</a>';
     }).join('');
   }
 
-  /* The header nav is authored in index.html with inline onclick handlers,
-     so its active state is synced from the filter each button declares. */
+  /* The header nav is authored as links in each page. Marked active by
+     destination, so it cannot drift out of step with the page you are on. */
   function syncNav() {
-    const buttons = el.mainnav.querySelectorAll('button');
-    Array.prototype.forEach.call(buttons, function (btn) {
-      const match = /setFilter\('([^']+)'\)/.exec(btn.getAttribute('onclick') || '');
-      btn.classList.toggle('active', !!match && match[1] === state.category);
+    if (!el.mainnav) return;
+    const here = CATEGORY_PAGES[state.category];
+    Array.prototype.forEach.call(el.mainnav.querySelectorAll('a'), function (a) {
+      const on = a.getAttribute('href') === here;
+      a.classList.toggle('active', on);
+      if (on) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
     });
   }
 
@@ -167,7 +182,7 @@
       el.grid.innerHTML =
         '<div class="empty-cart" style="grid-column:1/-1;">' +
           'Nothing matches that search. Try another word, or ' +
-          '<button class="remove-btn" data-reset style="margin-left:0;">see everything</button>.' +
+          '<a class="remove-btn" href="index.html" style="margin-left:0;">see the whole collection</a>.' +
         '</div>';
     }
 
@@ -178,11 +193,11 @@
 
   /* ---------- filter + search entry points ---------- */
 
+  /* Kept as a global because older markup calls it inline. It navigates
+     now rather than filtering in place. */
   function setFilter(cat) {
-    state.category = CATEGORIES.indexOf(cat) > -1 ? cat : 'All';
-    renderFilters();
-    syncNav();
-    renderGrid();
+    const target = CATEGORY_PAGES[cat] || CATEGORY_PAGES.All;
+    if (state.category !== cat) location.href = target;
   }
 
   function handleSearch(value) {
@@ -346,20 +361,9 @@
      leaves a stale listener behind. */
 
   function bind() {
-    el.filters.addEventListener('click', function (e) {
-      const btn = e.target.closest('[data-filter]');
-      if (btn) setFilter(btn.getAttribute('data-filter'));
-    });
-
     el.grid.addEventListener('click', function (e) {
       const opener = e.target.closest('[data-open]');
-      if (opener) return openModal(opener.getAttribute('data-open'));
-
-      if (e.target.closest('[data-reset]')) {
-        el.search.value = '';
-        handleSearch('');
-        setFilter('All');
-      }
+      if (opener) openModal(opener.getAttribute('data-open'));
     });
 
     el.overlay.addEventListener('click', function (e) {
@@ -395,6 +399,11 @@
       console.error('[Loop Theory] catalog.js did not load — no catalog to render.');
       return;
     }
+
+    /* rings.html says data-category="Rings"; index.html says nothing and
+       shows everything. */
+    const declared = document.body.getAttribute('data-category');
+    if (declared && CATEGORIES.indexOf(declared) > -1) state.category = declared;
 
     /* Everything that does not depend on the catalog paints immediately,
        so a slow database costs the shopper a grid and not a blank page. */

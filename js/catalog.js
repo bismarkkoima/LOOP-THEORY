@@ -104,6 +104,29 @@
       return items.filter(function (p) { return p.id === id; })[0] || null;
     },
 
+    /* Points a product row at an uploaded photograph, or clears it with
+       null. store.js puts the file in the bucket and deliberately knows
+       nothing about the catalog, so the dashboard links the two here.
+
+       Silently does nothing without a database — in local mode the
+       photo lives in IndexedDB and there is no row to point anywhere. */
+    setPhoto: function (productId, url) {
+      if (mode !== 'supabase') return Promise.resolve({ stored: false });
+
+      return window.LTSupabase.client()
+        .then(function (client) {
+          return client.from(TABLE)
+            .update({ photo_url: url || null })
+            .eq('id', productId);
+        })
+        .then(function (res) {
+          if (res.error) throw res.error;
+          const p = Catalog.get(productId);
+          if (p) p.photo = url || null;   /* so a re-render picks it up without a reload */
+          return { stored: true };
+        });
+    },
+
     /* Sends ids and quantities only. The subtotal shown in the drawer is
        for the shopper's benefit; place_order() recomputes it from the
        products table, because anything sent from here can be edited. */

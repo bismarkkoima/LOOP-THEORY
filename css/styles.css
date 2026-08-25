@@ -109,14 +109,15 @@ header{
   display:flex;align-items:center;gap:10px;
 }
 nav.mainnav{display:flex;gap:24px;}
-nav.mainnav button{
+nav.mainnav button, nav.mainnav a{
   background:none;border:none;
   font-size:13px;letter-spacing:0.08em;text-transform:uppercase;
   color:var(--paper-dim);font-weight:600;
   padding-bottom:4px;border-bottom:2px solid transparent;
   transition:all .2s;
 }
-nav.mainnav button:hover, nav.mainnav button.active{
+nav.mainnav button:hover, nav.mainnav button.active,
+nav.mainnav a:hover, nav.mainnav a.active{
   color:var(--brass-bright);border-color:var(--brass-bright);
 }
 .header-actions{display:flex;align-items:center;gap:12px;}
@@ -185,6 +186,7 @@ nav.mainnav button:hover, nav.mainnav button.active{
 .section-head h2{font-family:var(--display);font-size:36px;font-weight:450;margin:6px 0 0;}
 .filters{display:flex;gap:10px;flex-wrap:wrap;}
 .filter-btn{
+  display:inline-block;
   background:transparent;border:1px solid var(--line);color:var(--paper-dim);
   padding:8px 18px;border-radius:999px;font-size:12px;letter-spacing:0.05em;
   text-transform:uppercase;font-weight:600;transition:all .2s;
@@ -317,6 +319,19 @@ footer ul a:hover{color:var(--brass-bright);}
 .subtotal-row{display:flex;justify-content:space-between;margin-bottom:16px;font-size:14px;}
 .subtotal-row strong{font-family:var(--display);font-size:18px;color:var(--brass-bright);}
 .empty-cart{padding:60px 20px;text-align:center;color:var(--paper-dim);font-size:14px;}
+
+/* Each value restates a promise that has a page behind it — so it links there. */
+.value{display:flex;flex-direction:column;align-items:flex-start;}
+.value p{flex:1;}
+.value-link{
+  display:inline-flex;align-items:center;gap:7px;margin-top:16px;
+  font-size:11px;letter-spacing:0.08em;text-transform:uppercase;font-weight:700;
+  color:var(--brass-bright);
+  padding-bottom:3px;border-bottom:1px solid transparent;
+  transition:border-color .2s, gap .2s;
+}
+.value-link:hover{border-color:var(--brass-bright);gap:11px;}
+.value-link:focus-visible{outline:2px solid var(--brass-bright);outline-offset:3px;}
 
 /* Uploaded photography, where the generated artwork would otherwise be. */
 .card-media img{width:100%;height:100%;object-fit:cover;display:block;}

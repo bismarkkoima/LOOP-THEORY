@@ -224,14 +224,28 @@
     if (!matched && !unmatched.length) toast('Nothing to upload.', 'err');
   }
 
+  /* Catalog is only present once a database is configured; without one
+     the photo lives in this browser and there is no row to update. A
+     failure here must not lose the upload, so it is reported and swallowed. */
+  function linkPhoto(productId, url) {
+    if (!window.Catalog || !window.Catalog.setPhoto) return Promise.resolve();
+    return window.Catalog.setPhoto(productId, url).catch(function (err) {
+      toast('Photo saved, but the catalog row was not updated: ' + esc(err.message), 'err', 9000);
+    });
+  }
+
   function uploadTo(productId, file) {
     state.busy.add(productId);
     render();
-    window.PhotoStore.put(productId, file).then(function () {
-      state.busy.delete(productId);
-      render();
-      const p = productById(productId);
-      toast('Photo set for ' + esc(p ? p.name : productId) + '.', 'ok');
+    window.PhotoStore.put(productId, file).then(function (record) {
+      /* The bucket now holds the file; point the catalog row at it, or
+         the storefront will never know the photograph exists. */
+      return linkPhoto(productId, record && record.url).then(function () {
+        state.busy.delete(productId);
+        render();
+        const p = productById(productId);
+        toast('Photo set for ' + esc(p ? p.name : productId) + '.', 'ok');
+      });
     }).catch(function (err) {
       state.busy.delete(productId);
       render();
@@ -253,6 +267,8 @@
     fetch(record.url).then(function (r) { return r.blob(); }).catch(function () { return null; })
       .then(function (blob) {
         return window.PhotoStore.remove(productId).then(function () {
+          return linkPhoto(productId, null);
+        }).then(function () {
           state.busy.delete(productId);
           render();
           const label = product ? product.name : productId;
