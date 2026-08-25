@@ -312,25 +312,44 @@ const SIZES = {
 
 const FINISHES = ['Hand-polished', 'Brushed matte', 'Tumbled finish', 'High shine'];
 
-const PRODUCTS = SEED.map(function (row, i) {
-  const name = row[0], category = row[1], price = row[2],
-        was = row[3], metal = row[4], desc = row[5], art = row[6];
-  const m = METALS[metal];
+/* One shape for a product, whether it came from SEED below or from the
+   products table in Postgres. Both paths go through here, so the
+   storefront cannot tell the two apart — and the artwork stays vector
+   either way, redrawn from `metal` and `art` rather than stored. */
+function makeProduct(o) {
+  const m = METALS[o.metal] || METALS.brass;
+  const pos = o.position;
+  const category = RENDERERS[o.category] ? o.category : 'Rings';
+
   return {
-    id: 'lt-' + String(i + 1).padStart(2, '0'),
-    index: String(i + 1).padStart(2, '0'),
-    name: name,
+    id: o.id || 'lt-' + String(pos).padStart(2, '0'),
+    index: String(pos).padStart(2, '0'),
+    position: pos,
+    name: o.name,
     category: category,
-    price: price,
-    was: was,
-    desc: desc,
+    price: Number(o.price),
+    was: o.was == null ? null : Number(o.was),
+    desc: o.desc || '',
+    metal: o.metal,
+    art: o.art,
     material: m.label,
-    size: SIZES[category][i % SIZES[category].length],
-    finish: FINISHES[i % FINISHES.length],
-    svg: RENDERERS[category](m, art)
+    size: o.size || SIZES[category][(pos - 1) % SIZES[category].length],
+    finish: o.finish || FINISHES[(pos - 1) % FINISHES.length],
+    /* a real photograph, once one has been uploaded; the SVG is the fallback */
+    photo: o.photo || null,
+    svg: RENDERERS[category](m, o.art)
   };
+}
+
+const PRODUCTS = SEED.map(function (row, i) {
+  return makeProduct({
+    position: i + 1,
+    name: row[0], category: row[1], price: row[2],
+    was: row[3], metal: row[4], desc: row[5], art: row[6]
+  });
 });
 
 window.CATEGORIES = CATEGORIES;
 window.MARQUEE = MARQUEE;
 window.PRODUCTS = PRODUCTS;
+window.LTmakeProduct = makeProduct;

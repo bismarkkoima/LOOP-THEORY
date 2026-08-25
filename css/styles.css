@@ -318,6 +318,19 @@ footer ul a:hover{color:var(--brass-bright);}
 .subtotal-row strong{font-family:var(--display);font-size:18px;color:var(--brass-bright);}
 .empty-cart{padding:60px 20px;text-align:center;color:var(--paper-dim);font-size:14px;}
 
+/* Uploaded photography, where the generated artwork would otherwise be. */
+.card-media img{width:100%;height:100%;object-fit:cover;display:block;}
+.modal-media img{width:100%;max-height:320px;object-fit:cover;border-radius:12px;display:block;}
+.drawer-item .thumb img{width:100%;height:100%;object-fit:cover;border-radius:10px;display:block;}
+
+.drawer-note{
+  margin:0 0 14px;font-size:12.5px;line-height:1.5;
+  color:var(--paper-dim);
+}
+.drawer-note:empty{display:none;}
+.drawer-note.ok{color:var(--verdigris);}
+.drawer-note.warn{color:var(--brass-bright);}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */

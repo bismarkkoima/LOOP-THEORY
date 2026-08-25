@@ -14,6 +14,7 @@ you configure a Supabase project.
 * **Photo admin dashboard:** Drag-and-drop product photography with one-click removal and undo.
 * **Google sign-in:** Account system via Supabase Auth, gating the dashboard.
 * **Light and dark themes:** Remembered per visitor, or following the OS setting.
+* **Postgres catalog:** Products and orders in Supabase, with the bundled catalog as a fallback.
 
 ## 📁 Project Structure
 
@@ -30,20 +31,20 @@ loop-theory/
 │   ├── config.js         # Supabase keys, admin allowlist, default theme
 │   ├── theme.js          # Light/dark engine — loaded in <head>
 │   ├── supabase-client.js# Shared, memoised Supabase client
-│   ├── data.js           # Product catalog + generated SVG artwork
+│   ├── data.js           # Bundled catalog + generated SVG artwork
+│   ├── catalog.js        # Catalog adapter (Postgres | bundled data.js)
 │   ├── store.js          # Photo storage adapter (Supabase | IndexedDB)
 │   ├── auth.js           # Google sign-in, session, admin check
 │   ├── admin.js          # Dashboard behaviour
 │   ├── login.js          # Login page behaviour
 │   ├── account.js        # Account page behaviour
-│   └── app.js            # Storefront logic  ⚠️ currently empty
+│   └── app.js            # Storefront logic
+├── db/
+│   ├── schema.sql        # Tables, RLS policies, place_order()
+│   ├── seed.sql          # The 40-piece catalog (generated)
+│   └── generate-seed.js  # Regenerates seed.sql from js/data.js
 └── README.md
 ```
-
-> **Note:** `js/app.js` is still empty, so the storefront's product grid, search,
-> cart and quick-view modal do not render yet. The header's inline `onclick`
-> handlers (`setFilter`, `openCart`) throw `ReferenceError` until it is written.
-> The admin dashboard is unaffected — it has its own renderer.
 
 ## 🖥️ Running it locally
 
@@ -201,11 +202,104 @@ using ( bucket_id = 'product-photos'
 Without these, a public bucket with permissive policies lets anyone upload and
 delete. Add them before this is reachable from the internet.
 
+## 🗄️ The database
+
+The catalog and orders live in Supabase Postgres — the same project that
+already holds the photo bucket and Google sign-in, so there is no second
+service to run and nothing new to deploy. The browser talks to it directly
+with the `anon` key, which is why this still works on Vercel with no server,
+no API routes and no build step.
+
+**Until you set it up, the shop runs on the bundled catalog in `js/data.js`.**
+Nothing is broken; the storefront just reads its forty pieces from the file
+instead of the database, and Checkout says so rather than pretending.
+
+### Setting it up
+
+1. **Run the schema.** Supabase dashboard → SQL Editor → New query → paste
+   all of `db/schema.sql` → Run. It is idempotent, so re-running is safe.
+2. **Load the catalog.** Same again with `db/seed.sql`.
+3. **Make yourself an admin.** Last line of `schema.sql`, with your address:
+   ```sql
+   insert into public.admins (email) values ('you@example.com')
+   on conflict (email) do nothing;
+   ```
+4. **Fill in `js/config.js`** — the same `supabaseUrl` and `supabaseAnonKey`
+   the photo dashboard uses. Reload; the catalog now comes from Postgres.
+
+`db/seed.sql` is generated from `js/data.js` — never hand-edit it. After
+changing the catalog in `data.js`, regenerate with:
+
+```bash
+node db/generate-seed.js > db/seed.sql
+```
+
+Re-running the seed updates rows in place, so product ids never move and
+any `photo_url` you have set is left alone.
+
+### What is in it
+
+| Table | Holds | Who can read | Who can write |
+| --- | --- | --- | --- |
+| `products` | The catalog | Anyone (active rows) | Admins |
+| `orders` | One row per checkout | Admins | `place_order()` only |
+| `order_items` | The lines of an order | Admins | `place_order()` only |
+| `admins` | Who counts as an admin | Admins | Nobody, from the browser |
+
+Artwork is **not** stored. Each row keeps a `metal` and an `art` variant, and
+the storefront redraws the SVG from those at render time — so the art stays
+vector, re-themes with light and dark, and a catalog row stays small. Upload a
+photograph through the dashboard and `photo_url` takes over.
+
+### How the fallback works
+
+`js/catalog.js` is an adapter in the same shape as `js/store.js`: one
+interface, backend chosen once at load. `app.js` only ever calls `Catalog`
+and never learns which is live.
+
+It falls back to the bundled catalog when Supabase is unconfigured, when the
+products table is empty (schema ran, seed did not), and when the database is
+simply unreachable. That last one matters in production: a database blip
+gives visitors a slightly stale shop rather than an empty one.
+
+### Orders, and why checkout is one function
+
+Checkout calls a single Postgres function, `place_order(p_email, p_items)`.
+
+It sends **ids and quantities only**. The function looks every price up in
+the `products` table and computes the subtotal itself. The number in the cart
+drawer is for the shopper's benefit — anything the browser sends can be
+edited by whoever is holding the browser, and a client-supplied subtotal
+means a $285 ring can be bought for $1.
+
+It is also one transaction. Two separate inserts from the browser can
+half-succeed and leave an order with no lines in it.
+
+Because of that, neither `orders` nor `order_items` grants insert to anyone.
+There is no way to write a row except through the function.
+
+### Before you take real orders
+
+This is a working order table, not a checkout. It records what someone asked
+for; it does not take payment, reserve stock, or email anybody. Also:
+
+* **`place_order` is open to anonymous callers** — necessarily, since
+  shoppers are not signed in. Someone could script it and fill the table with
+  junk orders. Put a rate limit or a CAPTCHA in front of it, or require
+  sign-in, before the URL is public.
+* **Nobody can read an order back, including the person who placed it.**
+  Order confirmation pages need a design decision first: either sign shoppers
+  in, or issue a token per order.
+* **No payment provider is wired in.** `status` starts at `pending` and stays
+  there until something moves it.
+
+
 ## ▲ Deploying to Vercel
 
 The whole project is static, so Vercel serves it as-is — no build command, no
-framework preset, output directory `.`. Supabase is reached from the browser, so
-there is no server to run.
+framework preset, output directory `.`. Supabase is reached from the browser —
+catalog, orders, photos and sign-in all — so there is no server to run, no API
+routes, and no connection string or secret in the deployment.
 
 **PHP is deliberately not used anywhere in this project.** Vercel has no PHP
 runtime, so a PHP upload/delete backend would have to be thrown away at deploy

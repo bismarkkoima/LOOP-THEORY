@@ -2,7 +2,9 @@
    Loop Theory — app.js
    Storefront behaviour: marquee, filters, search, product grid,
    quick-view modal and the persistent cart drawer.
-   Depends on window.CATEGORIES / MARQUEE / PRODUCTS from data.js.
+   Reads the catalog through Catalog (catalog.js), which serves it
+   from Postgres or from the bundled data.js — this file cannot tell
+   which, and does not need to.
    ============================================================ */
 
 (function () {
@@ -38,8 +40,23 @@
     return '$' + n.toLocaleString('en-US');
   }
 
+  /* Product text now arrives from a database rather than a literal in
+     the source, so it is escaped on the way into markup. */
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* a photograph once the dashboard has one; the generated SVG until then */
+  function media(p) {
+    return p.photo
+      ? '<img src="' + esc(p.photo) + '" alt="' + esc(p.name) + '" loading="lazy">'
+      : p.svg;
+  }
+
   function product(id) {
-    return PRODUCTS.filter(function (p) { return p.id === id; })[0];
+    return Catalog.get(id);
   }
 
   function line(id) {
@@ -114,7 +131,7 @@
   function visible() {
     const q = state.query.trim().toLowerCase();
 
-    return PRODUCTS.filter(function (p) {
+    return Catalog.list().filter(function (p) {
       if (state.category !== 'All' && p.category !== state.category) return false;
       if (!q) return true;
       return (p.name + ' ' + p.category + ' ' + p.material + ' ' + p.finish + ' ' + p.desc)
@@ -127,12 +144,12 @@
       '<article class="card">' +
         '<div class="card-media" data-open="' + p.id + '">' +
           '<span class="card-index">' + p.index + '</span>' +
-          p.svg +
+          media(p) +
           '<button class="card-quick" data-open="' + p.id + '">Quick view</button>' +
         '</div>' +
         '<div class="card-body">' +
-          '<div class="card-cat">' + p.category + '</div>' +
-          '<h3 class="card-name">' + p.name + '</h3>' +
+          '<div class="card-cat">' + esc(p.category) + '</div>' +
+          '<h3 class="card-name">' + esc(p.name) + '</h3>' +
           '<div class="card-price">' +
             '<span class="now">' + money(p.price) + '</span>' +
             (p.was ? '<span class="was">' + money(p.was) + '</span>' : '') +
@@ -181,19 +198,19 @@
 
     el.modal.innerHTML = '' +
       '<button class="modal-close" data-close-modal aria-label="Close quick view">&#10005;</button>' +
-      '<div class="modal-media">' + p.svg + '</div>' +
+      '<div class="modal-media">' + media(p) + '</div>' +
       '<div class="modal-body">' +
-        '<span class="eyebrow">' + p.category + '</span>' +
-        '<h2>' + p.name + '</h2>' +
+        '<span class="eyebrow">' + esc(p.category) + '</span>' +
+        '<h2>' + esc(p.name) + '</h2>' +
         '<div class="modal-price">' + money(p.price) + '</div>' +
         /* Rendered even with no sale price, so the gap under the price
            is identical on every piece. */
         '<div class="modal-was">' + (p.was ? money(p.was) : '') + '</div>' +
-        '<p class="modal-desc">' + p.desc + '</p>' +
+        '<p class="modal-desc">' + esc(p.desc) + '</p>' +
         '<div class="modal-meta">' +
-          '<span class="meta-pill">' + p.material + '</span>' +
-          '<span class="meta-pill">' + p.size + '</span>' +
-          '<span class="meta-pill">' + p.finish + '</span>' +
+          '<span class="meta-pill">' + esc(p.material) + '</span>' +
+          '<span class="meta-pill">' + esc(p.size) + '</span>' +
+          '<span class="meta-pill">' + esc(p.finish) + '</span>' +
         '</div>' +
         '<button class="btn-primary modal-add" data-add="' + p.id + '">Add to bag</button>' +
       '</div>';
@@ -248,9 +265,9 @@
 
       return '' +
         '<div class="drawer-item">' +
-          '<div class="thumb">' + p.svg + '</div>' +
+          '<div class="thumb">' + media(p) + '</div>' +
           '<div class="drawer-item-info">' +
-            '<div class="nm">' + p.name + '</div>' +
+            '<div class="nm">' + esc(p.name) + '</div>' +
             '<div class="px">' + money(p.price * l.qty) + '</div>' +
             '<div class="qty-row">' +
               '<button class="qty-btn" data-qty="-1" data-id="' + l.id + '" aria-label="One fewer">&minus;</button>' +
@@ -267,6 +284,49 @@
 
     el.subtotal.textContent = money(total);
     el.cartCount.textContent = count;
+  }
+
+  /* ---------- checkout ---------- */
+
+  function note(text, kind) {
+    let n = document.getElementById('drawerNote');
+    if (!n) {
+      n = document.createElement('p');
+      n.id = 'drawerNote';
+      el.subtotal.closest('.drawer-foot').insertBefore(n, el.subtotal.closest('.subtotal-row').nextSibling);
+    }
+    n.className = 'drawer-note' + (kind ? ' ' + kind : '');
+    n.textContent = text;
+  }
+
+  function checkout() {
+    if (!state.cart.length) return note('Your bag is empty.', 'warn');
+
+    const btn = el.drawer.querySelector('.drawer-foot .btn-primary');
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Placing order…';
+    note('');
+
+    Catalog.createOrder({ items: state.cart })
+      .then(function (res) {
+        if (!res.stored) {
+          /* No database configured. Say so rather than showing a
+             confirmation for an order nobody received. */
+          return note('Checkout is not connected yet — set up the database first (see db/schema.sql).', 'warn');
+        }
+        state.cart = [];
+        saveCart();
+        renderCart();
+        note('Order placed. Your reference is ' + String(res.id).slice(0, 8) + '.', 'ok');
+      })
+      .catch(function (err) {
+        note('Could not place the order: ' + ((err && err.message) || err), 'warn');
+      })
+      .then(function () {
+        btn.disabled = false;
+        btn.textContent = label;
+      });
   }
 
   function openCart() {
@@ -331,18 +391,23 @@
   /* ---------- boot ---------- */
 
   function init() {
-    if (typeof PRODUCTS === 'undefined') {
-      console.error('[Loop Theory] data.js did not load — no catalog to render.');
+    if (typeof Catalog === 'undefined') {
+      console.error('[Loop Theory] catalog.js did not load — no catalog to render.');
       return;
     }
 
-    loadCart();
+    /* Everything that does not depend on the catalog paints immediately,
+       so a slow database costs the shopper a grid and not a blank page. */
     renderMarquee();
     renderFilters();
     syncNav();
-    renderGrid();
-    renderCart();
     bind();
+
+    Catalog.ready.then(function () {
+      loadCart();      /* prices and stale-id pruning both need the catalog */
+      renderGrid();
+      renderCart();
+    });
   }
 
   /* index.html calls these from inline handlers in the header and footer. */
@@ -353,6 +418,7 @@
   window.openModal = openModal;
   window.closeModal = closeModal;
   window.addToCart = addToCart;
+  window.checkout = checkout;
 
   document.addEventListener('DOMContentLoaded', init);
 })();
