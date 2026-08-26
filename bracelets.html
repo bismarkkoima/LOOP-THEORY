@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Loop Theory — Jewelry, considered.</title>
+  <title>Loop Theory — Bracelets</title>
+  <meta name="description" content="Ten bracelets at 6.5 and 7 inches, plus one-size bangles and cuffs shaped to stop rotating on the wrist.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='12' cy='15' r='8' fill='none' stroke='%23D2AD74' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='15' r='8' fill='none' stroke='%234C8577' stroke-width='2.4'/%3E%3C/svg%3E">
 
   <!-- Config and theme run before the stylesheet so the chosen
@@ -14,28 +15,30 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/pages.css">
 </head>
-<body>
+<!-- app.js locks the grid to this category and marks the nav accordingly. -->
+<body data-category="Bracelets">
 
 <header>
-  <div class="brand">
+  <a class="brand" href="index.html">
     <span class="loopmark">
-      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
         <circle cx="12" cy="15" r="8" stroke="var(--brass-bright)" stroke-width="2.4"/>
         <circle cx="19" cy="15" r="8" stroke="var(--verdigris)" stroke-width="2.4"/>
       </svg>
     </span>
     Loop Theory
-  </div>
+  </a>
   <nav class="mainnav" id="mainnav">
-    <a href="index.html" class="active" aria-current="page">Shop All</a>
+    <a href="index.html">Shop All</a>
     <a href="rings.html">Rings</a>
     <a href="necklaces.html">Necklaces</a>
     <a href="earrings.html">Earrings</a>
-    <a href="bracelets.html">Bracelets</a>
+    <a href="bracelets.html" class="active">Bracelets</a>
   </nav>
   <div class="header-actions">
-    <input type="text" id="searchInput" class="search-input" placeholder="Search collection..." oninput="handleSearch(this.value)" />
+    <input type="text" id="searchInput" class="search-input" placeholder="Search bracelets..." oninput="handleSearch(this.value)" />
     <span data-theme-toggle></span>
     <a class="linkish" href="faq.html">Help</a>
     <a class="linkish" href="account.html">Account</a>
@@ -45,25 +48,13 @@
   </div>
 </header>
 
-<section class="hero">
-  <div class="hero-copy">
-    <span class="eyebrow">— The Loop Theory —</span>
-    <h1>Every piece<br>closes the <em>loop.</em></h1>
-    <p>Considered jewelry for people who notice details. Rings, chains, and hoops finished to look like high design—direct from our maker network.</p>
-    <a href="#shop" class="btn-primary">
-      Shop the collection
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </a>
+<div class="page-hero">
+  <div class="page-hero-inner">
+    <span class="eyebrow">The Collection</span>
+    <h1>Chains, bangles and cuffs</h1>
+    <p class="lede">Ten bracelets at 6.5 and 7 inches, plus one-size bangles and cuffs shaped to stop rotating on the wrist.</p>
   </div>
-  <div class="hero-visual">
-    <svg viewBox="0 0 400 400" fill="none">
-      <circle cx="150" cy="180" r="95" stroke="var(--brass)" stroke-width="3" opacity="0.9"/>
-      <circle cx="240" cy="200" r="95" stroke="var(--verdigris)" stroke-width="3" opacity="0.9"/>
-      <circle cx="150" cy="180" r="95" stroke="var(--brass-bright)" stroke-width="1" stroke-dasharray="2 6" opacity="0.5"/>
-      <circle cx="195" cy="190" r="6" fill="var(--brass-bright)"/>
-    </svg>
-  </div>
-</section>
+</div>
 
 <div class="strip">
   <div class="strip-inner" id="marquee"></div>
@@ -72,37 +63,13 @@
 <section class="section" id="shop">
   <div class="section-head">
     <div>
-      <span class="eyebrow">The Collection</span>
-      <h2>40 pieces, live now</h2>
+      <span class="eyebrow">Bracelets</span>
+      <h2>10 pieces, live now</h2>
     </div>
     <div class="filters" id="filters"></div>
   </div>
   <div class="grid" id="grid"></div>
 </section>
-
-<div class="values">
-  <div class="value">
-    <h3>Finished, not flashy</h3>
-    <p>We hand-check every listing for finish and plating quality before it earns a spot on the site.</p>
-    <a class="value-link" href="about.html">What we check
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </a>
-  </div>
-  <div class="value">
-    <h3>Honest timelines</h3>
-    <p>Pieces ship direct from our maker network, typically arriving in 2–4 weeks.</p>
-    <a class="value-link" href="shipping.html">Shipping &amp; returns
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </a>
-  </div>
-  <div class="value">
-    <h3>Small batch pricing</h3>
-    <p>No department store markup. Just a fair margin so we can keep sourcing pieces worth wearing.</p>
-    <a class="value-link" href="about.html">How we price
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-    </a>
-  </div>
-</div>
 
 <footer id="about">
   <div class="foot-grid">

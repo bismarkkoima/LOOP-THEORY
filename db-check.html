@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loop Theory — Connection check</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='12' cy='15' r='8' fill='none' stroke='%23D2AD74' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='15' r='8' fill='none' stroke='%234C8577' stroke-width='2.4'/%3E%3C/svg%3E">
+
+  <script src="js/config.js"></script>
+  <script src="js/theme.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <style>
+    .checks{border-top:1px solid var(--line);margin-top:30px;}
+    .check{
+      display:grid;grid-template-columns:auto 1fr;gap:0 14px;
+      padding:16px 0;border-bottom:1px solid var(--line);align-items:start;
+    }
+    .dot{
+      width:11px;height:11px;border-radius:50%;margin-top:6px;
+      background:var(--paper-dim);flex-shrink:0;
+    }
+    .dot.ok{background:var(--verdigris);}
+    .dot.bad{background:#C2544B;}
+    .dot.wait{background:var(--brass);animation:pulse 1s ease-in-out infinite;}
+    @keyframes pulse{50%{opacity:.35;}}
+    @media (prefers-reduced-motion: reduce){.dot.wait{animation:none;}}
+    .check h3{margin:0;font-size:15px;font-weight:600;}
+    .check p{margin:5px 0 0;font-size:13.5px;color:var(--paper-dim);line-height:1.6;max-width:70ch;}
+    .check code{background:var(--tint);padding:1px 5px;border-radius:4px;font-size:0.9em;word-break:break-word;}
+    .verdict{
+      margin-top:30px;padding:22px 24px;border:1px solid var(--line);background:var(--ink-2);
+    }
+    .verdict h2{font-family:var(--display);font-size:21px;font-weight:450;margin:0 0 8px;}
+    .verdict p{margin:0;color:var(--paper-dim);font-size:14px;line-height:1.65;}
+  </style>
+</head>
+<body>
+
+<header>
+  <a class="brand" href="index.html">
+    <span class="loopmark">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <circle cx="12" cy="15" r="8" stroke="var(--brass-bright)" stroke-width="2.4"/>
+        <circle cx="19" cy="15" r="8" stroke="var(--verdigris)" stroke-width="2.4"/>
+      </svg>
+    </span>
+    Loop Theory
+  </a>
+  <nav class="pagenav">
+    <a href="index.html">Store</a>
+    <a href="admin.html">Dashboard</a>
+    <a href="orders.html">Orders</a>
+    <a href="db-check.html" aria-current="page">Connection</a>
+  </nav>
+  <div class="page-head-actions"><span data-theme-toggle></span></div>
+</header>
+
+<div class="page-hero">
+  <div class="page-hero-inner">
+    <span class="eyebrow">Setup</span>
+    <h1>Connection check</h1>
+    <p class="lede">
+      Every link between this site and Supabase, tested in order. Nothing here writes
+      anything — it is safe to reload as often as you like.
+    </p>
+  </div>
+</div>
+
+<main class="prose">
+  <div class="checks" id="checks"></div>
+  <div class="verdict" id="verdict">
+    <h2>Running…</h2>
+    <p>Checking configuration, then the database.</p>
+  </div>
+</main>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/data.js"></script>
+<script src="js/catalog.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  const list = document.getElementById('checks');
+  const verdict = document.getElementById('verdict');
+
+  function row(title) {
+    const el = document.createElement('div');
+    el.className = 'check';
+    el.innerHTML = '<span class="dot wait"></span><div><h3></h3><p></p></div>';
+    el.querySelector('h3').textContent = title;
+    el.querySelector('p').textContent = 'Checking…';
+    list.appendChild(el);
+    return {
+      pass: function (msg) { el.querySelector('.dot').className = 'dot ok'; el.querySelector('p').innerHTML = msg; },
+      fail: function (msg) { el.querySelector('.dot').className = 'dot bad'; el.querySelector('p').innerHTML = msg; },
+      idle: function (msg) { el.querySelector('.dot').className = 'dot'; el.querySelector('p').innerHTML = msg; }
+    };
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function done(ok, title, body) {
+    verdict.innerHTML = '<h2></h2><p></p>';
+    verdict.querySelector('h2').textContent = (ok ? '✓ ' : '') + title;
+    verdict.querySelector('p').innerHTML = body;
+  }
+
+  (async function run() {
+    const cfg = window.LT_CONFIG || {};
+
+    /* 1 — config file */
+    const c1 = row('Configuration file');
+    if (!window.LT_CONFIG) {
+      c1.fail('<code>js/config.js</code> did not load.');
+      return done(false, 'Stopped at the first step', 'Nothing else can be tested without it.');
+    }
+    c1.pass('<code>js/config.js</code> loaded.');
+
+    /* 2 — project URL */
+    const c2 = row('Project URL');
+    if (!cfg.supabaseUrl) {
+      c2.fail('Not set in <code>js/config.js</code>.');
+    } else {
+      c2.pass('<code>' + esc(cfg.supabaseUrl) + '</code>');
+    }
+
+    /* 3 — key */
+    const c3 = row('Publishable key');
+    if (!cfg.supabaseAnonKey) {
+      c3.fail('Blank. Supabase dashboard → Settings → API Keys → copy the <strong>Publishable key</strong> ' +
+              '(<code>sb_publishable_…</code>) or the legacy <strong>anon</strong> key, and paste it into ' +
+              '<code>supabaseAnonKey</code> in <code>js/config.js</code>. Never a Secret or service_role key.');
+      row('Everything below').idle('Waiting on the key.');
+      return done(false, 'Not connected yet — one value missing',
+        'The storefront is running on the bundled catalog in <code>js/data.js</code>, which is why it still works. ' +
+        'Paste the key and reload this page.');
+    }
+    c3.pass('Set (' + esc(String(cfg.supabaseAnonKey).slice(0, 12)) + '…), ' +
+            (/^sb_publishable_/.test(cfg.supabaseAnonKey) ? 'new publishable format.'
+             : /^eyJ/.test(cfg.supabaseAnonKey) ? 'legacy anon format.' : 'unrecognised format — check you copied the right one.'));
+
+    /* 4 — client */
+    const c4 = row('Supabase client');
+    let client;
+    try {
+      client = await window.LTSupabase.client();
+      c4.pass('Loaded from the CDN and ready.');
+    } catch (err) {
+      c4.fail('Could not load: <code>' + esc(err.message) + '</code>');
+      return done(false, 'The client could not start', 'Usually a network or content-security issue rather than your configuration.');
+    }
+
+    /* 5 — products table */
+    const c5 = row('Products table');
+    let count = null;
+    try {
+      const res = await client.from('products').select('id', { count: 'exact', head: true });
+      if (res.error) throw res.error;
+      count = res.count;
+      if (!count) {
+        c5.fail('Table exists but is empty — run <code>db/seed.sql</code> in the SQL editor.');
+      } else {
+        c5.pass(count + ' rows readable.');
+      }
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/does not exist|schema cache|relation/i.test(m)) {
+        c5.fail('No <code>products</code> table — run <code>db/schema.sql</code>, then <code>db/seed.sql</code>.');
+      } else {
+        c5.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 6 — checkout function. Calling it with no items raises inside the
+       function, which proves it exists without writing an order. */
+    const c6 = row('Checkout function');
+    try {
+      const res = await client.rpc('place_order', { p_email: '', p_items: [] });
+      if (res.error) throw res.error;
+      c6.fail('Returned without the expected guard — unexpected, but harmless.');
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/no purchasable items/i.test(m)) {
+        c6.pass('<code>place_order()</code> exists and refused an empty order, exactly as it should.');
+      } else if (/Could not find the function|does not exist|schema cache/i.test(m)) {
+        c6.fail('Not found — run <code>db/schema.sql</code>.');
+      } else {
+        c6.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 6b — order lookup */
+    const c6b = row('Order lookup');
+    try {
+      const res = await client.rpc('get_order', { p_token: '00000000-0000-0000-0000-000000000000' });
+      if (res.error) throw res.error;
+      c6b.fail('Returned a row for a zero token, which should not happen.');
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/no order with that reference/i.test(m)) {
+        c6b.pass('<code>get_order()</code> exists and refused an unknown reference.');
+      } else if (/Could not find the function|does not exist|schema cache/i.test(m)) {
+        c6b.fail('Not found — re-run <code>db/schema.sql</code>; it gained new functions.');
+      } else {
+        c6b.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 6c — admin status function */
+    const c6c = row('Order status function');
+    try {
+      const res = await client.rpc('set_order_status', {
+        p_order: '00000000-0000-0000-0000-000000000000', p_status: 'pending' });
+      if (res.error) throw res.error;
+      c6c.fail('Allowed a status change while signed out — check the is_admin() guard.');
+    } catch (err) {
+      const m = (err && err.message) || String(err);
+      if (/not authorised/i.test(m)) {
+        c6c.pass('<code>set_order_status()</code> exists and refused an unauthenticated caller.');
+      } else if (/no such order/i.test(m)) {
+        c6c.pass('Exists. You are signed in as an admin.');
+      } else if (/Could not find the function|does not exist|schema cache/i.test(m)) {
+        c6c.fail('Not found — re-run <code>db/schema.sql</code>.');
+      } else {
+        c6c.fail('<code>' + esc(m) + '</code>');
+      }
+    }
+
+    /* 7 — storage bucket */
+    const c7 = row('Photo bucket');
+    try {
+      const res = await client.storage.from(window.LTSupabase.bucket()).list('', { limit: 1 });
+      if (res.error) throw res.error;
+      c7.pass('<code>' + esc(window.LTSupabase.bucket()) + '</code> is reachable.');
+    } catch (err) {
+      c7.fail('<code>' + esc((err && err.message) || err) + '</code> — Storage → New bucket → ' +
+              '<code>' + esc(window.LTSupabase.bucket()) + '</code>, ticked public.');
+    }
+
+    /* 8 — what the storefront actually chose */
+    const c8 = row('Storefront source');
+    await window.Catalog.ready;
+    if (window.Catalog.mode === 'supabase') {
+      c8.pass('Reading <strong>' + window.Catalog.list().length + ' pieces from Postgres</strong>.');
+      done(true, 'Connected', 'The storefront is live on the database. Checkout writes real orders.');
+    } else {
+      c8.fail('Still on the bundled catalog. The console warning above names the reason.');
+      done(false, 'Configured, but not serving from the database',
+        'Fix whichever check is red and reload.');
+    }
+  })();
+})();
+</script>
+</body>
+</html>

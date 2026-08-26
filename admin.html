@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Loop Theory — Photo admin</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Ccircle cx='12' cy='15' r='8' fill='none' stroke='%23D2AD74' stroke-width='2.4'/%3E%3Ccircle cx='19' cy='15' r='8' fill='none' stroke='%234C8577' stroke-width='2.4'/%3E%3C/svg%3E">
+
+  <!-- Config and theme run before the stylesheet so the correct
+       palette is on <html> for the first paint. -->
+  <script src="js/config.js"></script>
+  <script src="js/theme.js"></script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,450;0,9..144,600;1,9..144,450&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/admin.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="loopmark">
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
+        <circle cx="12" cy="15" r="8" stroke="var(--brass-bright)" stroke-width="2.4"/>
+        <circle cx="19" cy="15" r="8" stroke="var(--verdigris)" stroke-width="2.4"/>
+      </svg>
+    </span>
+    Loop Theory
+    <span class="tag tag-brass" style="margin-left:6px;">Admin</span>
+  </div>
+
+  <div class="header-actions">
+    <span class="tag" id="modePill">…</span>
+    <a class="linkish" href="orders.html">Orders</a>
+    <a class="linkish" href="index.html">View store</a>
+    <span id="themeSlot"></span>
+    <span id="identity" style="display:inline-flex;align-items:center;gap:10px;"></span>
+  </div>
+</header>
+
+<div id="banners"></div>
+
+<main>
+  <section class="admin-head">
+    <span class="eyebrow">Catalog</span>
+    <h1>Product photos</h1>
+    <p class="admin-lede">
+      Each piece falls back to its generated artwork until you give it a photo.
+      Drop images below to match them by name, or drop straight onto a piece.
+    </p>
+  </section>
+
+  <div class="dropzone" id="dropzone" role="button" tabindex="0"
+       aria-label="Upload photos — drop files here or click to browse">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" stroke="currentColor"
+            stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M3.5 15v2.8A2.7 2.7 0 0 0 6.2 20.5h11.6a2.7 2.7 0 0 0 2.7-2.7V15"
+            stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+    </svg>
+    <h3>Drop photos here</h3>
+    <p>
+      Name a file <em>lt-01.jpg</em> or <em>Orbit Pendant.jpg</em> and it finds its own piece.
+      Otherwise click to browse. JPEG, PNG, WebP, GIF or AVIF, up to 15&nbsp;MB each.
+    </p>
+    <input type="file" id="filePicker" accept="image/*" multiple hidden>
+  </div>
+
+  <div class="admin-toolbar">
+    <div class="filters" id="adminFilters"></div>
+    <div class="toolbar-right">
+      <input type="text" id="adminSearch" class="search-input" placeholder="Search pieces...">
+      <label class="toggle">
+        <input type="checkbox" id="onlyMissing">
+        Needs a photo
+      </label>
+    </div>
+  </div>
+
+  <div class="overview" id="overview"></div>
+  <div class="stats" id="stats"></div>
+  <div class="admin-grid" id="adminGrid"></div>
+</main>
+
+<div class="toast-wrap" id="toasts" role="status" aria-live="polite"></div>
+
+<script src="js/supabase-client.js"></script>
+<script src="js/data.js"></script>
+<script src="js/catalog.js"></script>
+<script src="js/store.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
