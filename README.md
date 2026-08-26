@@ -17,6 +17,10 @@ you configure a Supabase project.
 * **Postgres catalog:** Products and orders in Supabase, with the bundled catalog as a fallback.
 * **Real checkout:** Delivery details, an order written in one transaction, and a link the customer can come back to.
 * **Order management:** A dashboard for moving orders between pending, paid, shipped and cancelled.
+* **Stock:** A count per piece, spent under a row lock at checkout and returned when an order is cancelled.
+* **Delivery pricing:** A free-shipping threshold and a flat fee, quoted in the drawer and charged in the database.
+* **Order history:** Every status move recorded with who made it, on a trail an update cannot erase.
+* **Dashboard figures:** Takings, orders awaiting action and stock warnings, counted in Postgres.
 
 ## 📁 Project Structure
 
@@ -260,19 +264,43 @@ any `photo_url` you have set is left alone.
 | `orders` | One row per checkout, with delivery address | Admins, or the holder of the order's token | `place_order()` only |
 | `order_items` | The lines of an order | Admins | `place_order()` only |
 | `admins` | Who counts as an admin | Admins | Nobody, from the browser |
+| `order_events` | Every status move, with who made it | Admins | The functions only |
+| `shop_settings` | One row: shipping figures, low-stock mark | Anyone | Admins |
 
-Four functions carry everything that is not a plain read:
+Five functions carry everything that is not a plain read:
 
 | Function | Who may call it | What it does |
 | --- | --- | --- |
-| `place_order(details, items)` | Anyone | Writes an order and its lines in one transaction, pricing it from the table. Returns the order id and its token. |
-| `get_order(token)` | Anyone holding the token | Returns exactly one order with its lines. |
-| `set_order_status(id, status)` | Admins | Moves an order between pending / paid / shipped / cancelled. Checks `is_admin()` itself. |
+| `place_order(details, items)` | Anyone | Takes stock, prices the lines and the delivery from the tables, and writes the order with its lines in one transaction. Returns the order id and its token. |
+| `get_order(token)` | Anyone holding the token | Returns exactly one order with its lines and its money. |
+| `set_order_status(id, status, note)` | Admins | Moves an order along a legal path, returns stock on a cancellation, and records the move. Checks `is_admin()` itself. |
+| `admin_overview()` | Admins | The dashboard's figures, counted in Postgres rather than in the browser. |
 | `is_admin()` | Internal | Whether the caller's email is in `admins`. |
 
-**There is no stock column, deliberately.** Nothing is warehoused — pieces are
-made after they are ordered, which is what the whole site says. Retiring a piece
-is `active = false`, not a count reaching zero.
+### Stock
+
+`products.stock` is a count, and `place_order()` is the only thing that spends
+it. It locks each product row with `select … for update` before checking and
+decrementing, so two shoppers reaching for the last piece queue instead of both
+being sold it. Cancelling an order puts its pieces back.
+
+An existing catalog inherits a stock of 10 when the column is added — a default
+of 0 would quietly close the whole shop on the next deploy. Set the real figures
+on the dashboard, where each card has a stock box.
+
+Retiring a piece is still `active = false`. Stock reaching zero is a different
+thing: the piece stays listed, marked sold out, and can be restocked.
+
+### Delivery
+
+`shop_settings` holds one row: a free-shipping threshold, a flat fee below it,
+and the count at which the dashboard calls stock low. The storefront reads it to
+quote delivery in the drawer, and `place_order()` reads the same row to charge
+it — the quote from the browser is never trusted, for the same reason a
+client-supplied subtotal is not.
+
+Orders therefore carry three figures: `subtotal`, `shipping`, and the `total`
+actually charged.
 
 Artwork is **not** stored. Each row keeps a `metal` and an `art` variant, and
 the storefront redraws the SVG from those at render time — so the art stays
@@ -292,10 +320,11 @@ gives visitors a slightly stale shop rather than an empty one.
 
 ### Orders, and why checkout is one function
 
-Checkout calls a single Postgres function, `place_order(p_email, p_items)`.
+Checkout calls a single Postgres function, `place_order(p_details, p_items)`.
 
 It sends **ids and quantities only**. The function looks every price up in
-the `products` table and computes the subtotal itself. The number in the cart
+the `products` table, checks the stock it is about to spend, and computes the
+subtotal and the delivery charge itself. The number in the cart
 drawer is for the shopper's benefit — anything the browser sends can be
 edited by whoever is holding the browser, and a client-supplied subtotal
 means a $285 ring can be bought for $1.
@@ -315,6 +344,16 @@ the page's own gate only decides what to draw.
 
 Each row also shows the customer's `order.html?ref=…` link.
 
+The buttons offer only the moves the database will accept — `pending` to paid or
+cancelled, `paid` to shipped or cancelled, and nothing out of `shipped` or
+`cancelled`. `set_order_status()` enforces the same rules, so a page left open
+overnight is refused rather than obeyed. Under the buttons is the order's
+history: every move, who made it, and when.
+
+The photo dashboard carries the stock boxes and a strip of figures across the
+top — takings over seven days and all time, orders awaiting action, and how many
+pieces are sold out or running low.
+
 ### What the customer sees
 
 Checkout collects a name, email and delivery address in the cart drawer, then
@@ -330,7 +369,7 @@ else's. The consequence is that a lost link cannot be recovered by email address
 ### Before you take real orders
 
 This is a working order table, not a checkout. It records what someone asked
-for; it does not take payment, reserve stock, or email anybody. Also:
+for and takes the stock for it; it does not take payment or email anybody. Also:
 
 * **`place_order` is open to anonymous callers** — necessarily, since shoppers
   are not signed in. It refuses more than ten orders an hour from the same email

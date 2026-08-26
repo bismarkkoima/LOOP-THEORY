@@ -337,6 +337,9 @@ function makeProduct(o) {
     finish: o.finish || FINISHES[(pos - 1) % FINISHES.length],
     /* a real photograph, once one has been uploaded; the SVG is the fallback */
     photo: o.photo || null,
+    /* null means nobody is counting — the bundled catalog has no stock
+       figures, and a piece with no figure is never treated as sold out */
+    stock: o.stock == null ? null : Number(o.stock),
     svg: RENDERERS[category](m, o.art)
   };
 }

@@ -82,7 +82,19 @@ create table if not exists public.products (
   updated_at   timestamptz not null default now()
 );
 
+-- How many are left. Added additively so a table from an earlier run
+-- catches up; the default of 10 is what an existing catalog inherits,
+-- since 0 would quietly close the whole shop on the next deploy.
+alter table public.products add column if not exists stock integer not null default 10;
+
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'products_stock_nonneg') then
+    alter table public.products add constraint products_stock_nonneg check (stock >= 0);
+  end if;
+end $$;
+
 create unique index if not exists products_position_idx on public.products (position);
+create index if not exists products_stock_idx on public.products (stock) where active;
 create index if not exists products_category_idx on public.products (category) where active;
 
 -- keep updated_at honest without the client having to remember
@@ -123,6 +135,55 @@ end $$;
 
 
 -- ------------------------------------------------------------
+-- Shop settings
+--
+-- One row, enforced by a primary key that can only ever be true.
+-- The shipping figures live here rather than in js/config.js
+-- because place_order() has to charge the same numbers the
+-- storefront quoted, and only the database is beyond the reach
+-- of whoever is holding the browser.
+-- ------------------------------------------------------------
+
+create table if not exists public.shop_settings (
+  id                      boolean primary key default true check (id),
+  free_shipping_threshold numeric(10,2) not null default 150 check (free_shipping_threshold >= 0),
+  flat_shipping           numeric(10,2) not null default 8   check (flat_shipping >= 0),
+  low_stock_at            integer not null default 3 check (low_stock_at >= 0),
+  updated_at              timestamptz not null default now()
+);
+
+insert into public.shop_settings (id) values (true) on conflict (id) do nothing;
+
+drop trigger if exists shop_settings_touch_updated_at on public.shop_settings;
+create trigger shop_settings_touch_updated_at
+  before update on public.shop_settings
+  for each row execute function public.touch_updated_at();
+
+alter table public.shop_settings enable row level security;
+
+do $$ begin
+  -- The storefront quotes shipping before checkout, so the numbers
+  -- have to be readable without a session.
+  if not exists (select 1 from pg_policies
+                 where tablename = 'shop_settings' and policyname = 'settings are public') then
+    create policy "settings are public"
+      on public.shop_settings for select
+      to anon, authenticated
+      using (true);
+  end if;
+
+  if not exists (select 1 from pg_policies
+                 where tablename = 'shop_settings' and policyname = 'admins change settings') then
+    create policy "admins change settings"
+      on public.shop_settings for update
+      to authenticated
+      using (public.is_admin())
+      with check (public.is_admin());
+  end if;
+end $$;
+
+
+-- ------------------------------------------------------------
 -- Orders
 --
 -- Name and unit price are copied onto each line at checkout
@@ -146,7 +207,7 @@ create table if not exists public.orders (
   ship_country text,
   note        text,
   subtotal    numeric(10,2) not null check (subtotal >= 0),
-  currency    text not null default 'USD',
+  currency    text not null default 'KES',
   status      text not null default 'pending'
               check (status in ('pending', 'paid', 'shipped', 'cancelled'))
 );
@@ -161,6 +222,19 @@ alter table public.orders add column if not exists ship_city    text;
 alter table public.orders add column if not exists ship_postal  text;
 alter table public.orders add column if not exists ship_country text;
 alter table public.orders add column if not exists note         text;
+
+-- What the delivery cost, and what was actually charged. Both are
+-- computed in place_order() from shop_settings, never from the request.
+alter table public.orders add column if not exists shipping numeric(10,2) not null default 0
+                                                            check (shipping >= 0);
+alter table public.orders add column if not exists total    numeric(10,2);
+
+-- Orders written before this column existed were subtotal-only.
+update public.orders set total = subtotal + shipping where total is null;
+alter table public.orders alter column total set not null;
+
+-- the default only binds new rows; an existing table needs it reset too
+alter table public.orders alter column currency set default 'KES';
 
 create unique index if not exists orders_token_idx on public.orders (token);
 
@@ -179,6 +253,43 @@ create table if not exists public.order_items (
 );
 
 create index if not exists order_items_order_idx on public.order_items (order_id);
+
+-- ------------------------------------------------------------
+-- Order history
+--
+-- set_order_status() used to overwrite a field and leave nothing
+-- behind. A dispute about when something shipped, or who cancelled
+-- it, needs a record that an update cannot erase — so every move is
+-- appended here instead, with the address of whoever made it.
+-- ------------------------------------------------------------
+
+create table if not exists public.order_events (
+  id          bigint generated always as identity primary key,
+  order_id    uuid not null references public.orders (id) on delete cascade,
+  from_status text,
+  to_status   text not null,
+  actor       text,
+  note        text,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists order_events_order_idx
+  on public.order_events (order_id, created_at);
+
+alter table public.order_events enable row level security;
+
+-- No insert policy at all: rows arrive only from the security-definer
+-- functions below, so the trail cannot be written by hand or forged.
+do $$ begin
+  if not exists (select 1 from pg_policies
+                 where tablename = 'order_events' and policyname = 'admins read order history') then
+    create policy "admins read order history"
+      on public.order_events for select
+      to authenticated
+      using (public.is_admin());
+  end if;
+end $$;
+
 create index if not exists orders_created_idx on public.orders (created_at desc);
 
 alter table public.orders      enable row level security;
@@ -237,9 +348,13 @@ declare
   v_order    uuid := gen_random_uuid();
   v_token    uuid := gen_random_uuid();
   v_email    text := nullif(trim(coalesce(p_details ->> 'email', '')), '');
-  v_subtotal numeric(10,2);
-  v_lines    integer;
+  v_subtotal numeric(10,2) := 0;
+  v_shipping numeric(10,2) := 0;
+  v_lines    integer := 0;
   v_recent   integer;
+  v_set      public.shop_settings%rowtype;
+  v_item     record;
+  v_prod     public.products%rowtype;
 begin
   -- A cheap brake on scripted junk. Not real rate limiting: without the
   -- caller's IP this can only key on a self-declared address. See README.
@@ -253,24 +368,23 @@ begin
     end if;
   end if;
 
-  -- Prices come from the table, never from the request, and unknown or
-  -- retired products are ignored rather than trusted.
-  select count(*), coalesce(sum(p.price * i.qty), 0)
-    into v_lines, v_subtotal
-  from jsonb_to_recordset(p_items) as i(product_id text, qty integer)
-  join public.products p on p.id = i.product_id and p.active
-  where i.qty between 1 and 99;
-
-  if v_lines = 0 then
-    raise exception 'order contains no purchasable items';
+  select * into v_set from public.shop_settings where id;
+  if not found then
+    -- No settings row is not a reason to refuse an order; it is a reason
+    -- not to charge for delivery.
+    v_set.free_shipping_threshold := 0;
+    v_set.flat_shipping           := 0;
   end if;
 
+  -- The order goes in first so the lines have something to hang off. The
+  -- money is nought until the lines have been priced, a few statements
+  -- down, and the whole function is one transaction either way.
   insert into public.orders (
-    id, token, email, subtotal,
+    id, token, email, subtotal, shipping, total,
     ship_name, ship_line1, ship_line2, ship_city, ship_postal, ship_country, note
   )
   values (
-    v_order, v_token, v_email, v_subtotal,
+    v_order, v_token, v_email, 0, 0, 0,
     nullif(trim(coalesce(p_details ->> 'name',    '')), ''),
     nullif(trim(coalesce(p_details ->> 'line1',   '')), ''),
     nullif(trim(coalesce(p_details ->> 'line2',   '')), ''),
@@ -280,14 +394,74 @@ begin
     nullif(trim(coalesce(p_details ->> 'note',    '')), '')
   );
 
-  insert into public.order_items (order_id, product_id, name, unit_price, qty)
-  select v_order, p.id, p.name, p.price, i.qty
-  from jsonb_to_recordset(p_items) as i(product_id text, qty integer)
-  join public.products p on p.id = i.product_id and p.active
-  where i.qty between 1 and 99;
+  -- Quantities are summed per product, so a cart that lists the same
+  -- piece twice is checked against stock once, as one demand for three
+  -- rather than three separate demands for one.
+  --
+  -- Ordered by id so two shoppers reaching for the same two pieces take
+  -- the locks in the same sequence and queue instead of deadlocking.
+  for v_item in
+    select i.product_id as product_id, sum(i.qty)::integer as qty
+    from jsonb_to_recordset(p_items) as i(product_id text, qty integer)
+    where i.qty between 1 and 99
+    group by i.product_id
+    order by i.product_id
+  loop
+    -- for update is what actually prevents overselling: the next order
+    -- to want this piece waits here until this one has committed, and
+    -- then reads the decremented figure rather than the stale one.
+    select * into v_prod
+    from public.products
+    where id = v_item.product_id and active
+    for update;
+
+    -- Unknown or retired products are ignored rather than trusted,
+    -- exactly as before.
+    if not found then
+      continue;
+    end if;
+
+    if v_prod.stock < v_item.qty then
+      raise exception '% — only % left', v_prod.name, v_prod.stock
+        using errcode = 'check_violation';
+    end if;
+
+    -- Prices come from the table, never from the request.
+    insert into public.order_items (order_id, product_id, name, unit_price, qty)
+    values (v_order, v_prod.id, v_prod.name, v_prod.price, v_item.qty);
+
+    update public.products
+       set stock = stock - v_item.qty
+     where id = v_prod.id;
+
+    v_subtotal := v_subtotal + v_prod.price * v_item.qty;
+    v_lines    := v_lines + 1;
+  end loop;
+
+  if v_lines = 0 then
+    raise exception 'order contains no purchasable items';
+  end if;
+
+  -- Delivery is priced here for the same reason the pieces are: the
+  -- figure the drawer quoted came from the browser and cannot be trusted.
+  if v_subtotal < v_set.free_shipping_threshold then
+    v_shipping := v_set.flat_shipping;
+  end if;
+
+  update public.orders
+     set subtotal = v_subtotal,
+         shipping = v_shipping,
+         total    = v_subtotal + v_shipping
+   where id = v_order;
+
+  insert into public.order_events (order_id, from_status, to_status, actor, note)
+  values (v_order, null, 'pending', v_email, 'order placed');
 
   -- The token is returned once. It is the shopper's only way back in.
-  return jsonb_build_object('id', v_order, 'token', v_token, 'subtotal', v_subtotal);
+  return jsonb_build_object('id', v_order, 'token', v_token,
+                            'subtotal', v_subtotal,
+                            'shipping', v_shipping,
+                            'total', v_subtotal + v_shipping);
 end $$;
 
 revoke all on function public.place_order(jsonb, jsonb) from public;
@@ -316,6 +490,8 @@ begin
            'created_at', o.created_at,
            'status', o.status,
            'subtotal', o.subtotal,
+           'shipping', o.shipping,
+           'total', o.total,
            'currency', o.currency,
            'email', o.email,
            'ship_name', o.ship_name,
@@ -355,12 +531,22 @@ grant execute on function public.get_order(uuid) to anon, authenticated;
 -- from the client.
 -- ------------------------------------------------------------
 
-create or replace function public.set_order_status(p_order uuid, p_status text)
-returns void
+-- The signature gains a note, so the old one goes first rather than
+-- being left behind as a second overload.
+drop function if exists public.set_order_status(uuid, text);
+
+create or replace function public.set_order_status(p_order uuid,
+                                                   p_status text,
+                                                   p_note   text default null)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_from  text;
+  v_actor text := auth.jwt() ->> 'email';
+  v_item  record;
 begin
   if not public.is_admin() then
     raise exception 'not authorised';
@@ -370,15 +556,113 @@ begin
     raise exception 'unknown status %', p_status;
   end if;
 
-  update public.orders set status = p_status where id = p_order;
+  -- Locked for the same reason products are: two dashboards open on the
+  -- same order must not both read 'pending' and both act on it.
+  select status into v_from
+  from public.orders
+  where id = p_order
+  for update;
 
   if not found then
     raise exception 'no such order';
   end if;
+
+  if v_from = p_status then
+    raise exception 'this order is already %', p_status;
+  end if;
+
+  -- Money and parcels only move forwards. An order that has shipped or
+  -- been cancelled is finished, and a cancelled one cannot be revived —
+  -- its stock has already gone back on the shelf and may since have sold.
+  if not (
+       (v_from = 'pending' and p_status in ('paid', 'cancelled'))
+    or (v_from = 'paid'    and p_status in ('shipped', 'cancelled'))
+  ) then
+    raise exception '% cannot become %', v_from, p_status;
+  end if;
+
+  -- Cancelling puts the pieces back. Without this the stock taken at
+  -- checkout would stay spent on an order nobody is going to receive.
+  if p_status = 'cancelled' then
+    for v_item in
+      select product_id, sum(qty)::integer as qty
+      from public.order_items
+      where order_id = p_order
+      group by product_id
+      order by product_id
+    loop
+      update public.products
+         set stock = stock + v_item.qty
+       where id = v_item.product_id;
+    end loop;
+  end if;
+
+  update public.orders set status = p_status where id = p_order;
+
+  insert into public.order_events (order_id, from_status, to_status, actor, note)
+  values (p_order, v_from, p_status, v_actor,
+          nullif(trim(coalesce(p_note, '')), ''));
+
+  return jsonb_build_object('id', p_order, 'from', v_from, 'to', p_status);
 end $$;
 
-revoke all on function public.set_order_status(uuid, text) from public;
-grant execute on function public.set_order_status(uuid, text) to authenticated;
+revoke all on function public.set_order_status(uuid, text, text) from public;
+grant execute on function public.set_order_status(uuid, text, text) to authenticated;
+
+
+
+
+-- ------------------------------------------------------------
+-- The dashboard's summary
+--
+-- One round trip for the figures across the top of the dashboard.
+-- Doing it here rather than by pulling every order into the browser
+-- keeps the counts right on a shop with more orders than a page.
+--
+-- Cancelled orders are excluded from takings: the money was never
+-- collected, and counting it flatters the total.
+-- ------------------------------------------------------------
+
+create or replace function public.admin_overview()
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_set public.shop_settings%rowtype;
+begin
+  if not public.is_admin() then
+    raise exception 'not authorised';
+  end if;
+
+  select * into v_set from public.shop_settings where id;
+
+  return jsonb_build_object(
+    'orders', (select count(*) from public.orders),
+    'by_status', coalesce((
+      select jsonb_object_agg(status, n)
+      from (select status, count(*) as n from public.orders group by status) t
+    ), '{}'::jsonb),
+    'takings', coalesce((
+      select sum(total) from public.orders where status <> 'cancelled'
+    ), 0),
+    'takings_7d', coalesce((
+      select sum(total) from public.orders
+      where status <> 'cancelled' and created_at > now() - interval '7 days'
+    ), 0),
+    'awaiting', (select count(*) from public.orders where status in ('pending', 'paid')),
+    'products', (select count(*) from public.products where active),
+    'out_of_stock', (select count(*) from public.products where active and stock = 0),
+    'low_stock', (select count(*) from public.products
+                  where active and stock > 0 and stock <= coalesce(v_set.low_stock_at, 3)),
+    'stock_units', coalesce((select sum(stock) from public.products where active), 0)
+  );
+end $$;
+
+revoke all on function public.admin_overview() from public;
+grant execute on function public.admin_overview() to authenticated;
 
 
 -- ------------------------------------------------------------

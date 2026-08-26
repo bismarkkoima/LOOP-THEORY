@@ -31,7 +31,13 @@
   }
 
   function money(n) {
-    return '$' + Number(n).toLocaleString('en-US');
+    return 'KSh ' + Number(n).toLocaleString('en-KE');
+  }
+
+  /* Orders placed before delivery was priced separately carry no total,
+     and for those the subtotal is what was charged. */
+  function total(o) {
+    return o.total == null ? Number(o.subtotal) : Number(o.total);
   }
 
   function when(iso) {
@@ -85,7 +91,7 @@
         '<dl class="facts" style="margin-top:28px;">' +
           '<div class="fact"><dt>Reference</dt><dd>' + esc(String(o.id).slice(0, 8)) + '</dd></div>' +
           '<div class="fact"><dt>Placed</dt><dd>' + esc(when(o.created_at)) + '</dd></div>' +
-          '<div class="fact"><dt>Total</dt><dd>' + money(o.subtotal) + '</dd></div>' +
+          '<div class="fact"><dt>Total</dt><dd>' + money(total(o)) + '</dd></div>' +
         '</dl>' +
       '</section>' +
 
@@ -94,7 +100,13 @@
         '<div class="table-scroll"><table class="order-table">' +
           '<thead><tr><th>Piece</th><th class="num">Qty</th><th class="num">Each</th><th class="num">Total</th></tr></thead>' +
           '<tbody>' + items + '</tbody>' +
-          '<tfoot><tr><td colspan="3">Subtotal</td><td class="num">' + money(o.subtotal) + '</td></tr></tfoot>' +
+          '<tfoot>' +
+            '<tr><td colspan="3">Subtotal</td><td class="num">' + money(o.subtotal) + '</td></tr>' +
+            '<tr><td colspan="3">Delivery</td><td class="num">' +
+              (Number(o.shipping) ? money(o.shipping) : 'Free') + '</td></tr>' +
+            '<tr class="foot-total"><td colspan="3">Total</td><td class="num">' +
+              money(total(o)) + '</td></tr>' +
+          '</tfoot>' +
         '</table></div>' +
       '</section>' +
 

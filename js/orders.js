@@ -12,7 +12,22 @@
   'use strict';
 
   const STATUSES = ['all', 'pending', 'paid', 'shipped', 'cancelled'];
-  const MOVES = ['pending', 'paid', 'shipped', 'cancelled'];
+
+  /* The same rules set_order_status() enforces. Kept here so the dashboard
+     offers only the moves that will be accepted — the database is still
+     what decides, and a stale page is refused rather than obeyed. */
+  const MOVES = {
+    pending:   ['paid', 'cancelled'],
+    paid:      ['shipped', 'cancelled'],
+    shipped:   [],
+    cancelled: []
+  };
+
+  const TERMINAL = {
+    shipped:   'Shipped orders are finished — there is nothing further to move.',
+    cancelled: 'Cancelled orders are finished. The pieces went back into stock, ' +
+               'and may since have sold, so this one cannot be reopened.'
+  };
 
   const els = {
     filter: document.getElementById('statusFilter'),
@@ -31,7 +46,10 @@
     });
   }
 
-  function money(n) { return '$' + Number(n).toLocaleString('en-US'); }
+  function money(n) { return 'KSh ' + Number(n).toLocaleString('en-KE'); }
+
+  /* Orders from before delivery was priced separately have no total. */
+  function total(o) { return o.total == null ? Number(o.subtotal) : Number(o.total); }
 
   function when(iso) {
     try {
@@ -88,7 +106,7 @@
             '<span class="nm">' + esc(who) + '</span><br>' +
             '<span class="sub">' + esc(when(o.created_at)) + (where ? ' · ' + esc(where) : '') + '</span>' +
           '</span>' +
-          '<span class="order-total">' + money(o.subtotal) + '</span>' +
+          '<span class="order-total">' + money(total(o)) + '</span>' +
           '<span class="pill ' + esc(o.status) + '">' + esc(o.status) + '</span>' +
         '</button>' +
         (open ? '<div class="order-detail" id="detail-' + esc(o.id) + '">Loading…</div>' : '') +
@@ -114,7 +132,13 @@
       '<div class="table-scroll"><table class="order-table">' +
         '<thead><tr><th>Piece</th><th class="num">Qty</th><th class="num">Each</th><th class="num">Total</th></tr></thead>' +
         '<tbody>' + rows + '</tbody>' +
-        '<tfoot><tr><td colspan="3">Subtotal</td><td class="num">' + money(o.subtotal) + '</td></tr></tfoot>' +
+        '<tfoot>' +
+          '<tr><td colspan="3">Subtotal</td><td class="num">' + money(o.subtotal) + '</td></tr>' +
+          '<tr><td colspan="3">Delivery</td><td class="num">' +
+            (Number(o.shipping) ? money(o.shipping) : 'Free') + '</td></tr>' +
+          '<tr class="foot-total"><td colspan="3">Total</td><td class="num">' +
+            money(total(o)) + '</td></tr>' +
+        '</tfoot>' +
       '</table></div>' +
 
       '<h4>Customer</h4>' +
@@ -123,18 +147,56 @@
       '</p>' +
 
       '<h4>Move it along</h4>' +
-      '<div class="status-actions">' +
-        MOVES.map(function (s) {
-          return '<button data-set="' + esc(o.id) + '" data-status="' + s + '"' +
-            ' aria-pressed="' + (o.status === s ? 'true' : 'false') + '"' +
-            (o.status === s ? ' disabled' : '') + '>' + s + '</button>';
-        }).join('') +
-      '</div>' +
+      moveActions(o) +
+
+      '<h4>History</h4>' +
+      '<div class="order-history" id="history-' + esc(o.id) + '">Loading…</div>' +
 
       '<h4>Customer link</h4>' +
       '<p style="margin:0;font-size:12.5px;color:var(--paper-dim);word-break:break-all;">' +
         'order.html?ref=' + esc(o.token) +
       '</p>';
+  }
+
+  /* Only the moves the database will accept, and a plain sentence where
+     there are none, rather than a row of buttons that all refuse. */
+  function moveActions(o) {
+    const next = MOVES[o.status] || [];
+
+    if (!next.length) {
+      return '<p class="terminal-note">' +
+        esc(TERMINAL[o.status] || 'There is nothing further to move.') + '</p>';
+    }
+
+    return '<div class="status-actions">' +
+      next.map(function (s) {
+        return '<button data-set="' + esc(o.id) + '" data-status="' + s + '">' + s + '</button>';
+      }).join('') +
+      '</div>';
+  }
+
+  function renderHistory(orderId, events) {
+    const box = document.getElementById('history-' + orderId);
+    if (!box) return;
+
+    if (!events.length) {
+      box.innerHTML = '<p class="terminal-note">Nothing recorded. ' +
+        'This order predates the history table.</p>';
+      return;
+    }
+
+    box.innerHTML = '<ol class="history">' + events.map(function (e) {
+      const move = e.from_status
+        ? esc(e.from_status) + ' → ' + esc(e.to_status)
+        : esc(e.to_status);
+
+      return '<li>' +
+        '<span class="h-move">' + move + '</span>' +
+        '<span class="h-who">' + esc(e.actor || 'the shopper') + '</span>' +
+        '<span class="h-when">' + esc(when(e.created_at)) + '</span>' +
+        (e.note ? '<span class="h-note">' + esc(e.note) + '</span>' : '') +
+      '</li>';
+    }).join('') + '</ol>';
   }
 
   /* ---------- data ---------- */
@@ -160,10 +222,22 @@
 
     const o = state.orders.filter(function (x) { return x.id === id; })[0];
     window.Catalog.orderItems(id)
-      .then(function (items) { renderDetail(o, items); })
+      .then(function (items) {
+        renderDetail(o, items);
+        return loadHistory(id);
+      })
       .catch(function (err) {
         const box = document.getElementById('detail-' + id);
         if (box) box.textContent = 'Could not load lines: ' + ((err && err.message) || err);
+      });
+  }
+
+  function loadHistory(id) {
+    return window.Catalog.orderEvents(id)
+      .then(function (events) { renderHistory(id, events); })
+      .catch(function (err) {
+        const box = document.getElementById('history-' + id);
+        if (box) box.textContent = 'Could not load history: ' + ((err && err.message) || err);
       });
   }
 
@@ -184,7 +258,10 @@
         }
         renderList();
         if (state.open === id) {
-          window.Catalog.orderItems(id).then(function (items) { renderDetail(o, items); });
+          window.Catalog.orderItems(id).then(function (items) {
+            renderDetail(o, items);
+            return loadHistory(id);
+          });
         }
       })
       .catch(function (err) {

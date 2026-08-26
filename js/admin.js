@@ -21,11 +21,23 @@
 
   function $(id) { return document.getElementById(id); }
 
+  /* The pieces this dashboard is looking at. With a database that is the
+     live catalog, which is the only copy carrying stock figures; without
+     one it is the bundled catalog, exactly as before.
+
+     Note the live list holds active products only, so a retired piece
+     drops off the dashboard along with the storefront. */
+  function products() {
+    return window.Catalog.mode === 'supabase'
+      ? window.Catalog.list()
+      : (window.PRODUCTS || []);
+  }
+
   /* ---------- boot ---------- */
 
   document.addEventListener('DOMContentLoaded', function () {
     ['themeSlot', 'identity', 'banners', 'dropzone', 'filePicker', 'adminFilters',
-     'adminSearch', 'onlyMissing', 'stats', 'adminGrid', 'toasts', 'modePill']
+     'adminSearch', 'onlyMissing', 'stats', 'overview', 'adminGrid', 'toasts', 'modePill']
       .forEach(function (id) { els[id] = $(id); });
 
     window.Theme.mount(els.themeSlot);
@@ -37,19 +49,65 @@
       }
       renderIdentity();
       if (gate.unsecured) bannerUnsecured();
-      return window.PhotoStore.ready.then(function () {
+      return Promise.all([window.PhotoStore.ready, window.Catalog.ready]).then(function () {
         if (window.PhotoStore.degraded) bannerDegraded();
         renderModePill();
         bindDropzone();
         bindToolbar();
         window.PhotoStore.onChange(render);
         render();
+        loadOverview();
       });
     }).catch(function (err) {
       console.error('[admin] boot failed', err);
       toast('Could not start the dashboard: ' + err.message, 'err');
     });
   });
+
+  /* ---------- the summary strip ----------
+     Counted in Postgres by admin_overview() rather than by pulling every
+     order down here, so the figures stay right on a shop with more orders
+     than fit in one page. */
+
+  function tile(label, value, kind) {
+    return '<div class="ov-tile' + (kind ? ' ' + kind : '') + '">' +
+      '<span class="ov-value">' + esc(value) + '</span>' +
+      '<span class="ov-label">' + esc(label) + '</span>' +
+      '</div>';
+  }
+
+  function loadOverview() {
+    if (!els.overview) return;
+
+    if (window.Catalog.mode !== 'supabase') {
+      /* Nothing has been ordered from a catalog that lives in a file. */
+      els.overview.innerHTML = '';
+      return;
+    }
+
+    return window.Catalog.overview()
+      .then(function (o) {
+        const by = o.by_status || {};
+        els.overview.innerHTML =
+          tile('Awaiting action', o.awaiting || 0, (o.awaiting ? 'warn' : '')) +
+          tile('Taken, 7 days', money(o.takings_7d || 0)) +
+          tile('Taken, all time', money(o.takings || 0)) +
+          tile('Orders', o.orders || 0) +
+          tile('Sold out', o.out_of_stock || 0, (o.out_of_stock ? 'warn' : '')) +
+          tile('Low stock', o.low_stock || 0, (o.low_stock ? 'warn' : '')) +
+          tile('Pieces in stock', o.stock_units || 0) +
+          tile('Cancelled', by.cancelled || 0);
+      })
+      .catch(function (err) {
+        /* A dashboard that still uploads photographs is more use than one
+           that refuses to draw because a count failed. */
+        els.overview.innerHTML = '';
+        console.warn('[admin] overview unavailable', err);
+      });
+  }
+
+  function money(n) { return 'KSh ' + Number(n).toLocaleString('en-KE'); }
+
 
   /* ---------- identity + banners ---------- */
 
@@ -206,7 +264,7 @@
 
     files.forEach(function (file) {
       const key = norm(file.name);
-      const hit = window.PRODUCTS.filter(function (p) {
+      const hit = products().filter(function (p) {
         return norm(p.id) === key || norm(p.name) === key;
       })[0];
       if (hit) { matched++; uploadTo(hit.id, file); }
@@ -290,13 +348,13 @@
   }
 
   function productById(id) {
-    return window.PRODUCTS.filter(function (p) { return p.id === id; })[0] || null;
+    return products().filter(function (p) { return p.id === id; })[0] || null;
   }
 
   /* ---------- render ---------- */
 
   function visible() {
-    return window.PRODUCTS.filter(function (p) {
+    return products().filter(function (p) {
       if (state.category !== 'All' && p.category !== state.category) return false;
       if (state.onlyMissing && window.PhotoStore.get(p.id)) return false;
       if (!state.query) return true;
@@ -307,8 +365,9 @@
 
   function render() {
     const rows = visible();
-    const total = window.PRODUCTS.length;
-    const withPhoto = window.PRODUCTS.filter(function (p) {
+    const all = products();
+    const total = all.length;
+    const withPhoto = all.filter(function (p) {
       return !!window.PhotoStore.get(p.id);
     }).length;
 
@@ -350,9 +409,10 @@
       '<div class="p-body">' +
         '<div class="p-cat">' + esc(p.category) + '</div>' +
         '<h3 class="p-name">' + esc(p.name) + '</h3>' +
-        '<div class="p-sub">$' + p.price + ' · ' +
+        '<div class="p-sub">KSh ' + p.price + ' · ' +
           (photo ? esc(window.PhotoStore.formatSize(photo.size)) : esc(p.material)) +
         '</div>' +
+        stockRow(p) +
       '</div>';
 
     el.querySelector('[data-act="pick"]').addEventListener('click', function (e) {
@@ -370,8 +430,65 @@
       });
     }
 
+    bindStock(el, p);
     dropTarget(el, function (files) { uploadTo(p.id, files[0]); });
     return el;
+  }
+
+  /* ---------- stock ----------
+     Writing stock is an ordinary update permitted by the "admins manage
+     products" policy. The decrements at checkout are a different matter
+     and happen inside place_order(), where the row can be locked — this
+     is for restocking and correcting, not for selling. */
+
+  function stockRow(p) {
+    if (window.Catalog.mode !== 'supabase') {
+      return '<div class="p-stock muted">Stock needs a database</div>';
+    }
+
+    const n = p.stock == null ? 0 : p.stock;
+    const flag = n <= 0 ? ' out' : (n <= window.Catalog.settings().lowStockAt ? ' low' : '');
+
+    return '<div class="p-stock' + flag + '">' +
+      '<label for="stock-' + esc(p.id) + '">Stock</label>' +
+      '<input type="number" min="0" step="1" id="stock-' + esc(p.id) + '" ' +
+        'value="' + esc(n) + '" aria-label="Stock for ' + esc(p.name) + '">' +
+      '<span class="p-stock-note">' +
+        (n <= 0 ? 'Sold out' : (flag ? 'Running low' : '')) +
+      '</span>' +
+      '</div>';
+  }
+
+  function bindStock(el, p) {
+    const input = el.querySelector('.p-stock input');
+    if (!input) return;
+
+    /* Committed on blur and on Enter rather than on every keystroke —
+       typing "12" should not first save a stock of 1. */
+    function commit() {
+      const next = Math.max(0, Math.floor(Number(input.value) || 0));
+      const was  = p.stock == null ? 0 : p.stock;
+      if (next === was) return;
+
+      input.disabled = true;
+      window.Catalog.setStock(p.id, next)
+        .then(function () {
+          toast(esc(p.name) + ' — stock set to ' + next + '.', 'ok');
+          render();          /* redraws the flag alongside the figure */
+          loadOverview();    /* and the counts across the top */
+        })
+        .catch(function (err) {
+          input.value = was;
+          input.disabled = false;
+          toast('Could not set stock: ' + esc(err.message || err), 'err', 8000);
+        });
+    }
+
+    input.addEventListener('click', function (e) { e.stopPropagation(); });
+    input.addEventListener('blur', commit);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
   }
 
   /* ---------- toasts ---------- */

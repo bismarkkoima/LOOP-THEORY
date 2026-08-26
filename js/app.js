@@ -36,6 +36,9 @@
     drawer:      document.getElementById('drawer'),
     drawerItems: document.getElementById('drawerItems'),
     subtotal:    document.getElementById('subtotal'),
+    shipping:    document.getElementById('shipping'),
+    total:       document.getElementById('total'),
+    shipHint:    document.getElementById('shipHint'),
     cartCount:   document.getElementById('cartCount')
   };
 
@@ -50,7 +53,50 @@
   /* ---------- helpers ---------- */
 
   function money(n) {
-    return '$' + n.toLocaleString('en-US');
+    return 'KSh ' + n.toLocaleString('en-KE');
+  }
+
+  /* How many of this piece are already in the bag, so the two places that
+     add to it can tell whether there is another one to be had. */
+  function inBag(id) {
+    const l = line(id);
+    return l ? l.qty : 0;
+  }
+
+  function soldOut(p) {
+    return Catalog.soldOut(p);
+  }
+
+  /* The bag, priced. Delivery is quoted from the same threshold the
+     database charges from, so the drawer and the receipt agree — and it
+     is only a quote: place_order() prices it again from shop_settings. */
+  function totals() {
+    let count = 0, subtotal = 0;
+
+    state.cart.forEach(function (l) {
+      const p = product(l.id);
+      if (!p) return;
+      count    += l.qty;
+      subtotal += p.price * l.qty;
+    });
+
+    const shipping = state.cart.length ? Catalog.shippingOn(subtotal) : 0;
+    return { count: count, subtotal: subtotal, shipping: shipping, total: subtotal + shipping };
+  }
+
+  function paintTotals(t) {
+    el.subtotal.textContent = money(t.subtotal);
+    if (el.shipping) el.shipping.textContent = t.shipping ? money(t.shipping) : 'Free';
+    if (el.total)    el.total.textContent    = money(t.total);
+
+    if (el.shipHint) {
+      const short = Catalog.settings().freeShippingOver - t.subtotal;
+      el.shipHint.textContent = (t.shipping && short > 0)
+        ? money(short) + ' more for free delivery'
+        : '';
+    }
+
+    el.cartCount.textContent = t.count;
   }
 
   /* Product text now arrives from a database rather than a literal in
@@ -156,12 +202,27 @@
     });
   }
 
+  /* A word about how many are left, but only when it is worth saying:
+     silence at healthy stock, a nudge when it is running down, and a
+     plain statement when there are none. */
+  function stockNote(p) {
+    if (p.stock == null) return '';
+    if (p.stock <= 0)    return '<span class="stock-flag out">Sold out</span>';
+    if (p.stock <= Catalog.settings().lowStockAt) {
+      return '<span class="stock-flag low">' + p.stock + ' left</span>';
+    }
+    return '';
+  }
+
   function card(p) {
+    const out = soldOut(p);
+
     return '' +
-      '<article class="card">' +
+      '<article class="card' + (out ? ' is-sold-out' : '') + '">' +
         '<div class="card-media" data-open="' + p.id + '">' +
           '<span class="card-index">' + p.index + '</span>' +
           media(p) +
+          stockNote(p) +
           '<button class="card-quick" data-open="' + p.id + '">Quick view</button>' +
         '</div>' +
         '<div class="card-body">' +
@@ -229,11 +290,25 @@
           '<span class="meta-pill">' + esc(p.size) + '</span>' +
           '<span class="meta-pill">' + esc(p.finish) + '</span>' +
         '</div>' +
-        '<button class="btn-primary modal-add" data-add="' + p.id + '">Add to bag</button>' +
+        addButton(p) +
       '</div>';
 
     el.overlay.classList.add('open');
     document.body.style.overflow = 'hidden';
+  }
+
+  /* Sold out, or the bag already holds the last one — either way there is
+     nothing to add, and a button that does nothing when pressed is worse
+     than one that says why. */
+  function addButton(p) {
+    if (soldOut(p)) {
+      return '<button class="btn-primary modal-add" disabled>Sold out</button>';
+    }
+    if (Catalog.canTake(p, inBag(p.id)) <= 0) {
+      return '<button class="btn-primary modal-add" disabled>' +
+               'All ' + p.stock + ' in your bag</button>';
+    }
+    return '<button class="btn-primary modal-add" data-add="' + p.id + '">Add to bag</button>';
   }
 
   function closeModal() {
@@ -245,7 +320,13 @@
   /* ---------- cart ---------- */
 
   function addToCart(id) {
-    if (!product(id)) return;
+    const p = product(id);
+    if (!p) return;
+
+    if (soldOut(p)) return note(p.name + ' is sold out.', 'warn');
+    if (Catalog.canTake(p, inBag(id)) <= 0) {
+      return note('That is all we have of ' + p.name + '.', 'warn');
+    }
 
     const existing = line(id);
     if (existing) existing.qty = Math.min(99, existing.qty + 1);
@@ -260,7 +341,16 @@
     if (!existing) return;
 
     if (existing.qty + delta < 1) return removeFromCart(id);
-    existing.qty = Math.min(99, existing.qty + delta);
+
+    const p = product(id);
+    /* The ceiling is whichever runs out first: the stock, or the 99 that
+       place_order() will accept on one line. */
+    const ceiling = Math.min(99, p && p.stock != null ? p.stock : 99);
+    if (existing.qty + delta > ceiling) {
+      return note('Only ' + ceiling + ' of ' + p.name + ' available.', 'warn');
+    }
+
+    existing.qty = existing.qty + delta;
 
     saveCart();
     renderCart();
@@ -273,26 +363,19 @@
   }
 
   function renderCart() {
-    let count = 0, total = 0;
+    const t = totals();
 
     if (state.view !== 'bag') {
-      state.cart.forEach(function (l) {
-        const p = product(l.id);
-        if (!p) return;
-        count += l.qty;
-        total += p.price * l.qty;
-      });
       if (state.view === 'checkout') renderCheckoutForm(); else renderPlaced();
-      el.subtotal.textContent = money(total);
-      el.cartCount.textContent = count;
+      paintTotals(t);
       updateFoot();
       return;
     }
 
     const rows = state.cart.map(function (l) {
       const p = product(l.id);
-      count += l.qty;
-      total += p.price * l.qty;
+      /* At the ceiling there is no more to be had, so the + is spent. */
+      const atMax = p.stock != null && l.qty >= Math.min(99, p.stock);
 
       return '' +
         '<div class="drawer-item">' +
@@ -303,7 +386,8 @@
             '<div class="qty-row">' +
               '<button class="qty-btn" data-qty="-1" data-id="' + l.id + '" aria-label="One fewer">&minus;</button>' +
               '<span>' + l.qty + '</span>' +
-              '<button class="qty-btn" data-qty="1" data-id="' + l.id + '" aria-label="One more">+</button>' +
+              '<button class="qty-btn" data-qty="1" data-id="' + l.id + '"' +
+                (atMax ? ' disabled' : '') + ' aria-label="One more">+</button>' +
               '<button class="remove-btn" data-remove="' + l.id + '">Remove</button>' +
             '</div>' +
           '</div>' +
@@ -313,8 +397,7 @@
     el.drawerItems.innerHTML = rows ||
       '<div class="empty-cart">Your bag is empty.<br>Pieces you add keep until you come back.</div>';
 
-    el.subtotal.textContent = money(total);
-    el.cartCount.textContent = count;
+    paintTotals(t);
     updateFoot();
   }
 
@@ -348,20 +431,25 @@
 
   function updateFoot() {
     const btn = footButton();
-    const subtotalRow = el.drawer.querySelector('.subtotal-row');
+    const rows = el.drawer.querySelectorAll('.subtotal-row');
     if (!btn) return;
+
+    function showRows(on) {
+      Array.prototype.forEach.call(rows, function (r) { r.style.display = on ? '' : 'none'; });
+      if (el.shipHint) el.shipHint.style.display = on ? '' : 'none';
+    }
 
     btn.disabled = false;
     if (state.view === 'bag') {
-      subtotalRow.style.display = '';
+      showRows(true);
       btn.textContent = 'Checkout';
       btn.onclick = goToCheckout;
     } else if (state.view === 'checkout') {
-      subtotalRow.style.display = '';
+      showRows(true);
       btn.textContent = 'Place order';
       btn.onclick = submitOrder;
     } else {
-      subtotalRow.style.display = 'none';
+      showRows(false);
       btn.textContent = 'Continue shopping';
       btn.onclick = function () { state.view = 'bag'; renderCart(); closeCart(); };
     }
@@ -473,11 +561,20 @@
           btn.textContent = 'Place order';
           return;
         }
+        /* The database has just decremented these; mirror it here so the
+           grid shows the new figures without a reload. It is a mirror and
+           not a source — a reload re-reads the real ones. */
+        state.cart.forEach(function (l) {
+          const p = product(l.id);
+          if (p && p.stock != null) p.stock = Math.max(0, p.stock - l.qty);
+        });
+
         state.placed = res;
         state.cart = [];
         saveCart();
         state.view = 'done';
         renderCart();
+        renderGrid();
       })
       .catch(function (err) {
         note('Could not place the order: ' + ((err && err.message) || err), 'warn');
@@ -491,7 +588,10 @@
     if (!n) {
       n = document.createElement('p');
       n.id = 'drawerNote';
-      el.subtotal.closest('.drawer-foot').insertBefore(n, el.subtotal.closest('.subtotal-row').nextSibling);
+      /* Under the whole breakdown rather than inside it — subtotal,
+         delivery and total are one block and must not be split. */
+      const foot = el.subtotal.closest('.drawer-foot');
+      foot.insertBefore(n, foot.querySelector('.btn-primary'));
     }
     n.className = 'drawer-note' + (kind ? ' ' + kind : '');
     n.textContent = text;

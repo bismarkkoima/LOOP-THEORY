@@ -67,6 +67,16 @@
   border-bottom:none;
   color:var(--brass-bright);
 }
+/* Subtotal and delivery are workings; the total is the answer. */
+.order-table tfoot tr:not(.foot-total) td{
+  font-weight:500;
+  color:var(--paper-dim);
+  padding-top:2px;padding-bottom:2px;
+}
+.order-table tfoot tr.foot-total td{
+  border-top:1px solid var(--line);
+  font-size:15px;
+}
 .ship{line-height:1.75;}
 
 /* ---------- admin list ---------- */
@@ -178,3 +188,35 @@
   .order-ref{grid-column:1/-1;}
   .order-total{text-align:right;}
 }
+
+
+/* ---------- the audit trail ---------- */
+
+.terminal-note{
+  margin:0;font-size:12.5px;line-height:1.65;color:var(--paper-dim);
+  max-width:52ch;
+}
+
+.order-history{font-size:12.5px;color:var(--paper-dim);}
+ol.history{list-style:none;margin:0;padding:0 0 0 15px;position:relative;}
+ol.history::before{
+  content:'';position:absolute;left:2px;top:5px;bottom:5px;
+  width:1px;background:var(--line);
+}
+ol.history li{
+  position:relative;padding:0 0 13px;
+  display:grid;grid-template-columns:auto 1fr;gap:2px 12px;
+  align-items:baseline;
+}
+ol.history li:last-child{padding-bottom:0;}
+ol.history li::before{
+  content:'';position:absolute;left:-16px;top:6px;
+  width:5px;height:5px;border-radius:50%;background:var(--brass);
+}
+.h-move{
+  font-weight:700;color:var(--paper);
+  letter-spacing:0.04em;text-transform:lowercase;
+}
+.h-who{color:var(--paper-dim);word-break:break-all;}
+.h-when{grid-column:1/-1;font-size:11px;opacity:0.75;}
+.h-note{grid-column:1/-1;font-style:italic;}
